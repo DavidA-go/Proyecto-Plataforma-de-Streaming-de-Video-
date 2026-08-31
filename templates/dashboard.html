@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CineStream - Panel Principal</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #0f1016;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(229, 9, 20, 0.12) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(88, 101, 242, 0.12) 0px, transparent 50%);
+            color: #f5f6fa;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Barra de navegación superior */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.2rem 3rem;
+            background: rgba(15, 16, 22, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .brand-logo {
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: #e50914;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            text-decoration: none;
+        }
+
+        .user-nav-info {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .btn-logout {
+            padding: 0.6rem 1.2rem;
+            background: rgba(229, 9, 20, 0.15);
+            border: 1px solid rgba(229, 9, 20, 0.4);
+            color: #ff4d4d;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            transition: all 0.25s ease;
+        }
+
+        .btn-logout:hover {
+            background: #e50914;
+            color: white;
+            box-shadow: 0 4px 15px rgba(229, 9, 20, 0.4);
+        }
+
+        /* Layout Principal */
+        .main-container {
+            max-width: 1000px;
+            margin: 3rem auto;
+            padding: 0 1.5rem;
+            width: 100%;
+            animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Banner de Bienvenida */
+        .welcome-hero {
+            background: linear-gradient(135deg, rgba(28, 32, 46, 0.9), rgba(20, 22, 32, 0.95)), 
+                        url('https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?q=80&w=1000&auto=format&fit=crop') center/cover;
+            border-radius: 20px;
+            padding: 2.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+            margin-bottom: 2.5rem;
+        }
+
+        .welcome-hero h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: #ffffff;
+        }
+
+        .welcome-hero p {
+            color: #a0a6b8;
+            font-size: 0.95rem;
+        }
+
+        /* Tarjeta de Información de Usuario */
+        .profile-card {
+            background: rgba(20, 22, 32, 0.75);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        .profile-card h3 {
+            font-size: 1.2rem;
+            margin-bottom: 1.5rem;
+            color: #ffffff;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 0.8rem;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .info-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 1.2rem;
+            border-radius: 12px;
+        }
+
+        .info-item label {
+            display: block;
+            font-size: 0.78rem;
+            color: #727a8e;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 0.4rem;
+            font-weight: 600;
+        }
+
+        .info-item span {
+            font-size: 1.05rem;
+            color: #f5f6fa;
+            font-weight: 500;
+        }
+
+        /* Insignia de Estado */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.82rem;
+            font-weight: 600;
+        }
+
+        .badge-active {
+            background: rgba(40, 167, 69, 0.15);
+            color: #2ecc71;
+            border: 1px solid rgba(40, 167, 69, 0.3);
+        }
+
+        .badge-inactive {
+            background: rgba(220, 53, 69, 0.15);
+            color: #ff6b6b;
+            border: 1px solid rgba(220, 53, 69, 0.3);
+        }
+
+        /* Adaptación móvil */
+        @media (max-width: 768px) {
+            .navbar {
+                padding: 1rem 1.5rem;
+            }
+            .welcome-hero {
+                padding: 1.8rem;
+            }
+            .welcome-hero h1 {
+                font-size: 1.6rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Navegación Superior -->
+    <nav class="navbar">
+        <a href="#" class="brand-logo">🎬 CineStream</a>
+        <div class="user-nav-info">
+            <a href="/logout" class="btn-logout">Cerrar Sesión</a>
+        </div>
+    </nav>
+
+    <!-- Contenido Principal -->
+    <main class="main-container">
+
+        <!-- Hero de Bienvenida -->
+        <section class="welcome-hero">
+            <h1>¡Hola de nuevo, {{ usuario.nombre }}! 👋</h1>
+            <p>Tu sesión está activa. Disfruta del catálogo y administra tu cuenta desde aquí.</p>
+        </section>
+
+        <!-- Detalle de la Cuenta -->
+        <section class="profile-card">
+            <h3>Información del Usuario</h3>
+            
+            <div class="info-grid">
+                <div class="info-item">
+                    <label>Nombre Completo</label>
+                    <span>{{ usuario.nombre }}</span>
+                </div>
+
+                <div class="info-item">
+                    <label>Correo Electrónico</label>
+                    <span>{{ usuario.correo }}</span>
+                </div>
+
+                <div class="info-item">
+                    <label>Rol de Usuario</label>
+                    <span style="text-transform: capitalize;">{{ usuario.rol }}</span>
+                </div>
+
+                <div class="info-item">
+                    <label>Estado de la Cuenta</label>
+                    <span>
+                        {% if usuario.activo %}
+                            <span class="badge badge-active">● Activo</span>
+                        {% else %}
+                            <span class="badge badge-inactive">● Inactivo</span>
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+</body>
+</html>
