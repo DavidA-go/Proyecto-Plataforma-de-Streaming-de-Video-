@@ -38,20 +38,17 @@ Antes de ejecutar el proyecto es necesario tener instalado:
 
 Clonar específicamente la rama `Codigo_Parcial1`:
 
-```bash
-git clone -b Codigo_Parcial1 https://github.com/DavidA-go/Proyecto-Plataforma-de-Streaming-de-Video-.git
-cd Proyecto-Plataforma-de-Streaming-de-Video-
+## 3. Crear la base de datos
 
-Configuración de la base de datos
-3. Crear la base de datos PostgreSQL
+Abrir PostgreSQL o pgAdmin y crear una base de datos llamada:
 
-Abrir PostgreSQL/pgAdmin y crear una base de datos llamada:
-
+```text
 login_solid
-
-El proyecto utiliza PostgreSQL con la siguiente configuración:
-
 Host: localhost
 Puerto: 5432
 Usuario: postgres
 Base de datos: login_solid
+```bash
+git clone -b Codigo_Parcial1 https://github.com/DavidA-go/Proyecto-Plataforma-de-Streaming-de-Video-.git
+Usuario: postgres
+Base de dats: login_solid
