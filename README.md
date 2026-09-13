@@ -1,16 +1,57 @@
-# React + Vite
+# Plataforma de Streaming - Parcial 1
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Proyecto de plataforma de streaming desarrollado para el Parcial 1.
 
-Currently, two official plugins are available:
+## Tecnologías utilizadas
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React
+- Vite
+- Node.js
+- Express
+- PostgreSQL
+- JavaScript
+- HTML
+- CSS
 
-## React Compiler
+## Patrones de diseño implementados
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Singleton
+- Factory Method
+- Builder
+- Registry
+- Factory
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+# Instalación y ejecución
+
+## 1. Requisitos
+
+Antes de ejecutar el proyecto es necesario tener instalado:
+
+- Node.js
+- npm
+- PostgreSQL
+- Git
+
+## 2. Descargar el proyecto
+
+Clonar específicamente la rama `Codigo_Parcial1`:
+
+```bash
+git clone -b Codigo_Parcial1 https://github.com/DavidA-go/Proyecto-Plataforma-de-Streaming-de-Video-.git
+cd Proyecto-Plataforma-de-Streaming-de-Video-
+
+Configuración de la base de datos
+3. Crear la base de datos PostgreSQL
+
+Abrir PostgreSQL/pgAdmin y crear una base de datos llamada:
+
+login_solid
+
+El proyecto utiliza PostgreSQL con la siguiente configuración:
+
+Host: localhost
+Puerto: 5432
+Usuario: postgres
+Base de datos: login_solid
