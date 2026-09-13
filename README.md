@@ -125,3 +125,9 @@ http://localhost:5173
 
 - Las carpetas `node_modules/`, `dist/`, y los archivos `.env` no están incluidos en el repositorio (por seguridad y tamaño); por eso es necesario correr `npm install` y crear el `.env` manualmente después de clonar.
 - El backend debe quedar corriendo en `http://localhost:5000` y el frontend en `http://localhost:5173`; ambas terminales deben permanecer abiertas al mismo tiempo para que la aplicación funcione.
+- En PlataformaStreaming/backend crea un archivo .env y coloca la configuracion de la base de datos
+DB_USER=postgres
+DB_HOST=localhost
+DB_NAME=login_solid
+DB_PASSWORD=Crisxpg
+DB_PORT=5432
