@@ -1,54 +1,127 @@
-# Plataforma de Streaming - Parcial 1
+# Plataforma de Streaming de Video
 
-Proyecto de plataforma de streaming desarrollado para el Parcial 1.
+Proyecto académico de una plataforma de streaming de video (Node.js/Express + PostgreSQL en el backend, React + Vite en el frontend).
 
-## Tecnologías utilizadas
-
-- React
-- Vite
-- Node.js
-- Express
-- PostgreSQL
-- JavaScript
-- HTML
-- CSS
-
-## Patrones de diseño implementados
-
-- Singleton
-- Factory Method
-- Builder
-- Registry
-- Factory
+**Autores:** Juan Martínez · Cristian Rueda
 
 ---
 
-# Instalación y ejecución
+## Requisitos previos
 
-## 1. Requisitos
+Instalar antes de clonar el proyecto:
 
-Antes de ejecutar el proyecto es necesario tener instalado:
+- **Node.js** y **npm**
+- **PostgreSQL**
+- **Git**
+- **pgAdmin** (opcional, para administrar la base de datos gráficamente)
 
-- Node.js
-- npm
-- PostgreSQL
-- Git
+Verificar que quedaron instalados correctamente:
 
-## 2. Descargar el proyecto
+```bash
+node --version
+npm --version
+psql --version
+git --version
+```
 
-Clonar específicamente la rama `Codigo_Parcial1`:
+Si cada comando devuelve un número de versión, todo está listo para continuar.
 
-## 3. Crear la base de datos
+---
 
-Abrir PostgreSQL o pgAdmin y crear una base de datos llamada:
+## 1. Clonar el proyecto
 
-```text
-login_solid
-Host: localhost
-Puerto: 5432
-Usuario: postgres
-Base de datos: login_solid
 ```bash
 git clone -b Codigo_Parcial1 https://github.com/DavidA-go/Proyecto-Plataforma-de-Streaming-de-Video-.git
-Usuario: postgres
-Base de dats: login_solid
+cd Proyecto-Plataforma-de-Streaming-de-Video-
+```
+
+Verificar que quedó en la rama correcta:
+
+```bash
+git branch --show-current
+```
+
+Debe mostrar `Codigo_Parcial1`.
+
+---
+
+## 2. Crear la base de datos en PostgreSQL
+
+Con PostgreSQL instalado y corriendo, crear una base de datos llamada `login_solid`.
+
+**Opción A — con pgAdmin:** Databases → clic derecho → Create → Database → nombre `login_solid` → Save.
+
+**Opción B — con SQL:**
+```sql
+CREATE DATABASE login_solid;
+```
+
+Luego ejecutar los scripts de la carpeta `backend/db/` (por ejemplo `migration_add_plan.sql`) sobre esa base de datos, ya sea desde el **Query Tool** de pgAdmin o con `psql`:
+
+```bash
+psql -U postgres -d login_solid -f backend/db/migration_add_plan.sql
+```
+
+---
+
+## 3. Crear el archivo `.env` del backend
+
+El archivo `backend/.env` no viene en GitHub (contiene datos privados de conexión). Crearlo manualmente en:
+
+```
+backend/.env
+```
+
+Con este contenido, reemplazando `SU_CONTRASEÑA` por la contraseña real del usuario `postgres`:
+
+```env
+DB_USER=postgres
+DB_HOST=localhost
+DB_NAME=login_solid
+DB_PASSWORD=SU_CONTRASEÑA
+DB_PORT=5432
+```
+
+> No subir este archivo a GitHub.
+
+---
+
+## 4. Instalar dependencias y ejecutar el Backend
+
+En una terminal, desde la carpeta principal del proyecto:
+
+```bash
+cd backend
+npm install
+node index.js
+```
+
+Dejar esta terminal abierta mientras se usa la aplicación.
+
+---
+
+## 5. Instalar dependencias y ejecutar el Frontend
+
+Abrir una **segunda terminal**, desde la carpeta principal del proyecto:
+
+```bash
+npm install
+npm run dev
+```
+
+---
+
+## 6. Abrir la aplicación
+
+Abrir en el navegador la dirección que muestra la terminal del frontend:
+
+```
+http://localhost:5173
+```
+
+---
+
+## Notas
+
+- Las carpetas `node_modules/`, `dist/`, y los archivos `.env` no están incluidos en el repositorio (por seguridad y tamaño); por eso es necesario correr `npm install` y crear el `.env` manualmente después de clonar.
+- El backend debe quedar corriendo en `http://localhost:5000` y el frontend en `http://localhost:5173`; ambas terminales deben permanecer abiertas al mismo tiempo para que la aplicación funcione.
