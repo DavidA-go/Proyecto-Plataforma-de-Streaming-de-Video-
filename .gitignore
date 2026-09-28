@@ -1,3 +1,11 @@
-~.docx
+# Archivos temporales de Word
+~$*.docx
 *.tmp
-*.tmp
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Variables de entorno
+.env
