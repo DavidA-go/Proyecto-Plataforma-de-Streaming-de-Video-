@@ -11,12 +11,32 @@ import HLSProtocol from './streaming/HLSProtocol.js'; // Patrón Bridge (impleme
 import DASHProtocol from './streaming/DASHProtocol.js'; // Patrón Bridge (implementor concreto)
 import VODDelivery from './streaming/VODDelivery.js'; // Patrón Bridge (abstracción refinada)
 import LiveDelivery from './streaming/LiveDelivery.js'; // Patrón Bridge (abstracción refinada)
+import CatalogoService from './catalog/CatalogoService.js'; // Patrón Composite (catálogo: serie -> temporada -> episodio)
+import {
+  AuditoriaDecorator,
+  LimiteDispositivosDecorator,
+  RestriccionGeograficaDecorator,
+  LicenciaDenegadaError,
+} from './drm/LicenseDecorators.js'; // Patrón Decorator (reglas apilables sobre LicenseManager)
+import SesionesRegistry from './drm/SesionesRegistry.js'; // Sesiones activas (las usa el Decorator de límite)
+import AuditoriaLog from './drm/AuditoriaLog.js'; // Bitácora (la llena el Decorator de auditoría)
 
 const app = express();
 const PORT = 5000;
 
 app.use(cors());
 app.use(express.json());
+
+// Resumen de un nodo del catálogo (sirve igual para una película que para una
+// serie o una colección: es la ventaja del Composite).
+const resumirContenido = (nodo) => ({
+  id: nodo.id,
+  tipo: nodo.tipo(),
+  titulo: nodo.titulo,
+  duracionMin: nodo.getDuracion(),
+  duracionTexto: nodo.getDuracionFormateada(),
+  totalReproducibles: nodo.obtenerReproducibles().length,
+});
 
 // Ruta: lista los planes disponibles usando el Factory Method
 // El cliente (frontend) puede pedir esta lista para mostrar precios/beneficios
@@ -194,9 +214,16 @@ app.put('/api/usuarios/:id/plan', async (req, res) => {
 // qué clase concreta usar, solo llama a DRMFactoryProvider.
 // ------------------------------------------------------------------
 app.post('/api/stream/autorizar', async (req, res) => {
-  const { usuarioId, contenidoId, proveedorExterno } = req.body;
+  const { usuarioId, contenidoId, proveedorExterno, dispositivoId, pais } = req.body;
 
   try {
+    // Patrón Composite: el contenidoId puede ser una película, un episodio,
+    // una serie o una colección. El endpoint no necesita saber cuál es.
+    const contenido = CatalogoService.buscar(contenidoId);
+    if (!contenido) {
+      return res.status(404).json({ message: `Contenido "${contenidoId}" no encontrado en el catálogo.` });
+    }
+
     const result = await db.query('SELECT * FROM usuarios WHERE id = $1', [usuarioId]);
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Usuario no encontrado.' });
@@ -224,21 +251,68 @@ app.post('/api/stream/autorizar', async (req, res) => {
       licencias = new PlayReadyLicenseAdapter();
     }
 
+    // 2.2 Patrón Decorator: se ENVUELVE el gestor de licencias (sea el de la
+    //     familia o el Adapter) con reglas adicionales, como capas de cebolla.
+    //     Todas implementan LicenseManager, así que más abajo se sigue
+    //     llamando igual: licencias.emitirLicencia(...).
+    //
+    //     La llamada entra por la capa de afuera y baja hacia adentro:
+    //       Auditoría -> Límite de dispositivos -> Región -> gestor real
+    //
+    //     El límite de pantallas sale del plan creado por PlanFactory
+    //     (Factory Method): Básico=1, Premium=2, Familiar=4.
+    const plan = PlanFactory.crearPlan(usuario.planTipo);
+    licencias = new RestriccionGeograficaDecorator(licencias, pais || 'CO');
+    licencias = new LimiteDispositivosDecorator(licencias, plan, dispositivoId || 'dispositivo-por-defecto');
+    licencias = new AuditoriaDecorator(licencias);
+
     // 3. Se usan en conjunto, sin que el endpoint sepa si es la familia
-    //    Básica o Premium.
+    //    Básica o Premium, ni cuántos decorators hay.
     const validacion = validador.validarToken(usuario, contenidoId);
     if (!validacion.autorizado) {
       return res.status(403).json({ message: 'Acceso denegado.', validacion });
     }
 
-    const licencia = licencias.emitirLicencia(usuario, contenidoId);
+    const licencia = await licencias.emitirLicencia(usuario, contenidoId);
     const marcaDeAgua = watermarker.aplicarMarcaDeAgua(usuario, contenidoId);
 
-    res.status(200).json({ message: 'Reproducción autorizada', validacion, licencia, marcaDeAgua });
+    res.status(200).json({
+      message: 'Reproducción autorizada',
+      validacion,
+      licencia,
+      marcaDeAgua,
+      contenido: resumirContenido(contenido),
+    });
   } catch (error) {
+    // Una regla de un Decorator rechazó la licencia (límite de pantallas, región...)
+    if (error instanceof LicenciaDenegadaError) {
+      return res.status(403).json({ message: error.message, codigo: error.codigo });
+    }
     console.error('Error al autorizar DRM:', error);
     res.status(500).json({ message: 'Error interno del servidor.' });
   }
+});
+
+// ------------------------------------------------------------------
+// Ruta: libera la pantalla en uso cuando el usuario deja de reproducir.
+// Sin esto, LimiteDispositivosDecorator seguiría contando la sesión
+// hasta que expire sola (10 minutos).
+// ------------------------------------------------------------------
+app.post('/api/stream/detener', (req, res) => {
+  const { usuarioId, sesionId } = req.body;
+  const liberada = SesionesRegistry.liberar(usuarioId, sesionId);
+  res.status(200).json({
+    message: liberada ? 'Sesión liberada' : 'La sesión no existía o ya había expirado',
+    pantallasEnUso: SesionesRegistry.activas(usuarioId).length,
+  });
+});
+
+// ------------------------------------------------------------------
+// Ruta: consulta la bitácora que llena AuditoriaDecorator
+// (licencias emitidas y denegadas, de la más reciente a la más antigua).
+// ------------------------------------------------------------------
+app.get('/api/stream/auditoria', (req, res) => {
+  res.status(200).json({ eventos: AuditoriaLog.ultimos(50) });
 });
 
 // ------------------------------------------------------------------
@@ -303,8 +377,28 @@ app.post('/api/stream/entrega', (req, res) => {
       return res.status(400).json({ message: 'tipoEntrega inválido. Usa "vod" o "live".' });
     }
 
-    const manifest = entrega.generarManifest(contenidoId, tokenDRM);
-    res.status(200).json({ message: 'Manifiesto generado con Bridge', manifest });
+    // 3. Patrón Composite: se resuelve el contenido en el catálogo. Una
+    //    película devuelve [ella misma]; una serie devuelve todos sus
+    //    episodios; una colección, todo lo que contiene. Para cada elemento
+    //    reproducible se genera su manifiesto con el MISMO código (Bridge).
+    const contenido = CatalogoService.buscar(contenidoId);
+    if (!contenido) {
+      return res.status(404).json({ message: `Contenido "${contenidoId}" no encontrado en el catálogo.` });
+    }
+
+    const reproducibles = contenido.obtenerReproducibles().map((elemento) => ({
+      id: elemento.id,
+      titulo: elemento.titulo,
+      tipo: elemento.tipo(),
+      manifest: entrega.generarManifest(elemento.id, tokenDRM),
+    }));
+
+    res.status(200).json({
+      message: 'Manifiesto generado con Bridge',
+      manifest: reproducibles[0].manifest, // primer reproducible (compatible con el Dashboard anterior)
+      reproducibles,
+      contenido: resumirContenido(contenido),
+    });
   } catch (error) {
     console.error('Error al generar entrega de streaming:', error);
     res.status(400).json({ message: error.message });
@@ -334,6 +428,48 @@ app.post('/api/recomendaciones/perfil', (req, res) => {
     console.error('Error al generar perfil de recomendación:', error);
     res.status(400).json({ message: error.message });
   }
+});
+
+// ------------------------------------------------------------------
+// Ruta: Catálogo — devuelve el árbol de contenido.
+// Patrón Composite: colecciones, series, temporadas, episodios y
+// películas se tratan con la misma interfaz (ElementoContenido), así
+// que el árbol completo se serializa con una sola llamada recursiva.
+//
+// Filtros opcionales:
+//   ?generos=accion,thriller   -> árbol podado por géneros
+//   ?perfil=familiar           -> usa los géneros de una plantilla del
+//                                 Prototype (PerfilRecomendacionRegistry)
+// ------------------------------------------------------------------
+app.get('/api/catalogo', (req, res) => {
+  try {
+    let generos = [];
+    if (req.query.perfil) {
+      const perfil = PerfilRecomendacionRegistry.obtenerPlantilla(String(req.query.perfil));
+      generos = perfil.generosFavoritos;
+    } else if (req.query.generos) {
+      generos = String(req.query.generos).split(',');
+    }
+
+    if (generos.length === 0) {
+      return res.status(200).json({ catalogo: CatalogoService.obtenerArbol() });
+    }
+
+    const catalogo = CatalogoService.filtrarPorGeneros(generos);
+    res.status(200).json({ generos, catalogo, ...(catalogo ? {} : { message: 'Sin resultados para esos géneros.' }) });
+  } catch (error) {
+    console.error('Error al consultar el catálogo:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// Ruta: un nodo cualquiera del catálogo (película, serie, temporada, colección...).
+app.get('/api/catalogo/:id', (req, res) => {
+  const nodo = CatalogoService.buscar(req.params.id);
+  if (!nodo) {
+    return res.status(404).json({ message: `Contenido "${req.params.id}" no encontrado.` });
+  }
+  res.status(200).json({ contenido: nodo.toJSON(), resumen: resumirContenido(nodo) });
 });
 
 app.listen(PORT, () => {

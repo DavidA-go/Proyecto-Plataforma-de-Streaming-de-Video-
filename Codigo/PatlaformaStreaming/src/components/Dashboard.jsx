@@ -11,6 +11,88 @@ const slugify = (texto) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, '-');
 
+// Cada navegador cuenta como un "dispositivo" para el límite de pantallas
+// (Decorator LimiteDispositivosDecorator). Se guarda para que sea estable.
+// Para probar el límite: abre la misma cuenta en otro navegador o en una
+// ventana de incógnito (tendrá otro dispositivoId).
+const getDispositivoId = () => {
+  let id = localStorage.getItem('cineverse_device_id');
+  if (!id) {
+    id = `web-${Math.random().toString(36).slice(2, 8)}`;
+    localStorage.setItem('cineverse_device_id', id);
+  }
+  return id;
+};
+
+const TIPO_LABEL = {
+  coleccion: 'Colección',
+  serie: 'Serie',
+  temporada: 'Temporada',
+  episodio: 'Episodio',
+  pelicula: 'Película',
+  documental: 'Documental',
+};
+
+// Nodo del árbol del catálogo (patrón Composite, del lado del frontend).
+// Es RECURSIVO: si el nodo tiene "hijos" (colección, serie, temporada) se
+// dibuja como grupo desplegable y se llama a sí mismo por cada hijo; si no
+// (película, documental, episodio) se dibuja como hoja. Para dibujar el
+// árbol no hace falta saber de antemano cuántos niveles tiene.
+function CatalogNode({ nodo, onPlay, nivel = 0 }) {
+  const esGrupo = Array.isArray(nodo.hijos);
+
+  const etiqueta = (
+    <span className="catalog-label">
+      <span className={`catalog-tag catalog-tag-${nodo.tipo}`}>{TIPO_LABEL[nodo.tipo] || nodo.tipo}</span>
+      <span className="catalog-title">{nodo.titulo}</span>
+      <span className="catalog-meta">
+        {nodo.duracionTexto}
+        {esGrupo ? ` · ${nodo.totalReproducibles} reproducible(s)` : ''}
+      </span>
+    </span>
+  );
+
+  // La raíz no se reproduce (serían decenas de manifiestos de golpe).
+  const boton =
+    nivel > 0 ? (
+      <button
+        type="button"
+        className="catalog-play"
+        title={`Reproducir ${nodo.titulo}`}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onPlay({ id: nodo.id, title: nodo.titulo });
+        }}
+      >
+        ▶
+      </button>
+    ) : null;
+
+  if (!esGrupo) {
+    return (
+      <div className="catalog-leaf">
+        {etiqueta}
+        {boton}
+      </div>
+    );
+  }
+
+  return (
+    <details className="catalog-group" open={nivel < 1}>
+      <summary>
+        {etiqueta}
+        {boton}
+      </summary>
+      <div className="catalog-children">
+        {nodo.hijos.map((hijo) => (
+          <CatalogNode key={hijo.id} nodo={hijo} onPlay={onPlay} nivel={nivel + 1} />
+        ))}
+      </div>
+    </details>
+  );
+}
+
 // Mapeo simple: cada plan de suscripción "sugiere" una categoría de perfil
 // de recomendación distinta, solo para variar la demo del Prototype.
 const CATEGORIA_POR_PLAN = {
@@ -58,6 +140,10 @@ export default function Dashboard() {
   const [reproduciendo, setReproduciendo] = useState(null); // resultado de DRM + Builder
   const [perfilRecomendado, setPerfilRecomendado] = useState(null); // resultado de Prototype
   const [errorReproduccion, setErrorReproduccion] = useState('');
+  const [mostrarCatalogo, setMostrarCatalogo] = useState(false);
+  const [catalogo, setCatalogo] = useState(null); // árbol del Composite
+  const [soloMiPerfil, setSoloMiPerfil] = useState(false);
+  const [errorCatalogo, setErrorCatalogo] = useState('');
 
   useEffect(() => {
     const stored = localStorage.getItem('cineverse_user');
@@ -84,6 +170,28 @@ export default function Dashboard() {
       .catch((err) => console.error('❌ No se pudo cargar el perfil de recomendación:', err));
   }, [user]);
 
+  // Patrón Composite: carga el árbol del catálogo cuando se abre el panel.
+  // Con "Solo mi perfil" se le pasa al backend la categoría del Prototype
+  // (?perfil=familiar) y devuelve el árbol podado por esos géneros.
+  useEffect(() => {
+    if (!mostrarCatalogo || !user) return;
+
+    const categoriaBase = CATEGORIA_POR_PLAN[user.planTipo] || 'accionAventura';
+    const params = soloMiPerfil ? { perfil: categoriaBase } : {};
+
+    axios
+      .get('http://localhost:5000/api/catalogo', { params })
+      .then((res) => {
+        console.log('🌳 [Composite] Árbol del catálogo recibido:', res.data.catalogo);
+        setCatalogo(res.data.catalogo);
+        setErrorCatalogo('');
+      })
+      .catch((err) => {
+        console.error('❌ No se pudo cargar el catálogo:', err);
+        setErrorCatalogo('No se pudo cargar el catálogo.');
+      });
+  }, [mostrarCatalogo, soloMiPerfil, user]);
+
   // Se dispara al darle clic al botón de play de cualquier tarjeta:
   // 1) Abstract Factory (DRM): valida el token y emite la licencia según el plan.
   //    - Si el plan es Premium/Familiar, además pedimos explícitamente el
@@ -94,7 +202,8 @@ export default function Dashboard() {
     if (!user) return;
     setErrorReproduccion('');
     setReproduciendo(null);
-    const contenidoId = slugify(item.title);
+    // Las tarjetas fijas usan el slug del título; los nodos del catálogo traen su id.
+    const contenidoId = item.id || slugify(item.title);
 
     // El Adapter se dispara SIEMPRE, sin importar el plan, para que
     // quede evidenciado en cualquier prueba: Premium/Familiar usa el
@@ -109,8 +218,10 @@ export default function Dashboard() {
         usuarioId: user.id,
         contenidoId,
         proveedorExterno,
+        dispositivoId: getDispositivoId(), // para el Decorator de límite de pantallas
+        pais: 'CO', // para el Decorator de restricción geográfica
       });
-      console.log('✅ [Abstract Factory / Adapter] Autorización + licencia recibida:', autorizacion.data);
+      console.log('✅ [Abstract Factory / Adapter / Decorator] Autorización + licencia recibida:', autorizacion.data);
 
       console.log(`🌉 [Bridge] Generando entrega VOD sobre HLS para "${item.title}"...`);
       const entrega = await axios.post('http://localhost:5000/api/stream/entrega', {
@@ -125,6 +236,8 @@ export default function Dashboard() {
         titulo: item.title,
         licencia: autorizacion.data.licencia,
         manifest: entrega.data.manifest,
+        contenido: entrega.data.contenido, // resumen del nodo (Composite)
+        totalManifiestos: entrega.data.reproducibles.length,
       });
     } catch (err) {
       console.error('❌ Error al autorizar/construir la reproducción:', err);
@@ -132,7 +245,29 @@ export default function Dashboard() {
     }
   };
 
+  // Libera la pantalla en uso (Decorator de límite) al dejar de reproducir.
+  const handleStop = async () => {
+    if (!user || !reproduciendo) return;
+    try {
+      await axios.post('http://localhost:5000/api/stream/detener', {
+        usuarioId: user.id,
+        sesionId: reproduciendo.licencia.sesionId,
+      });
+    } catch (err) {
+      console.error('❌ No se pudo liberar la sesión:', err);
+    }
+    setReproduciendo(null);
+  };
+
   const handleLogout = () => {
+    if (user && reproduciendo) {
+      axios
+        .post('http://localhost:5000/api/stream/detener', {
+          usuarioId: user.id,
+          sesionId: reproduciendo.licencia.sesionId,
+        })
+        .catch(() => {});
+    }
     localStorage.removeItem('cineverse_user');
     navigate('/login');
   };
@@ -191,8 +326,12 @@ export default function Dashboard() {
         <h1>Hola de nuevo, {firstName}</h1>
         <p>Retoma tus series pendientes o descubre algo nuevo del catálogo seleccionado para ti esta semana.</p>
         <div className="dash-hero-cta">
-          <button className="btn-primary" style={{ width: 'auto', padding: '12px 26px' }}>
-            Explorar catálogo
+          <button
+            className="btn-primary"
+            style={{ width: 'auto', padding: '12px 26px' }}
+            onClick={() => setMostrarCatalogo((v) => !v)}
+          >
+            {mostrarCatalogo ? 'Ocultar catálogo' : 'Explorar catálogo'}
           </button>
           <button className="btn-ghost">Mi lista</button>
         </div>
@@ -211,6 +350,29 @@ export default function Dashboard() {
             Cambiar plan →
           </Link>
         </div>
+
+        {/* Resultado visible del Composite: árbol colección > serie > temporada > episodio */}
+        {mostrarCatalogo && (
+          <div className="catalog-panel">
+            <div className="catalog-panel-head">
+              <span className="dash-plan-badge">Catálogo (Composite)</span>
+              <label className="catalog-filter">
+                <input
+                  type="checkbox"
+                  checked={soloMiPerfil}
+                  onChange={(e) => setSoloMiPerfil(e.target.checked)}
+                />
+                Solo mi perfil{perfilRecomendado ? ` (${perfilRecomendado.nombre})` : ''}
+              </label>
+            </div>
+            {errorCatalogo && <div className="alert-error">{errorCatalogo}</div>}
+            {catalogo ? (
+              <CatalogNode nodo={catalogo} onPlay={handlePlay} />
+            ) : (
+              !errorCatalogo && <p className="catalog-empty">{soloMiPerfil ? 'No hay contenido para tu perfil.' : 'Cargando catálogo…'}</p>
+            )}
+          </div>
+        )}
 
         {/* Resultado visible del Prototype: el perfil clonado para este usuario */}
         {perfilRecomendado && (
@@ -240,10 +402,21 @@ export default function Dashboard() {
               <li>Duración de la licencia: {reproduciendo.licencia.duracionMinutos} min</li>
               <li>Descarga offline: {reproduciendo.licencia.permiteOffline ? 'Sí' : 'No'}</li>
               <li>Proveedor DRM (Adapter): {reproduciendo.licencia.proveedorExterno}</li>
+              <li>
+                Contenido (Composite): {TIPO_LABEL[reproduciendo.contenido.tipo]} · {reproduciendo.contenido.duracionTexto} ·{' '}
+                {reproduciendo.totalManifiestos} manifiesto(s) generado(s)
+              </li>
+              <li>
+                Pantallas en uso (Decorator): {reproduciendo.licencia.pantallasEnUso} de {reproduciendo.licencia.pantallasMaximas} ·
+                Región: {reproduciendo.licencia.region} · Auditoría: {reproduciendo.licencia.auditoriaId}
+              </li>
               <li>Calidades disponibles: {reproduciendo.manifest.calidades.map((c) => c.resolucion).join(', ')}</li>
               <li>Streaming adaptativo: {reproduciendo.manifest.adaptativo ? 'Activado' : 'Desactivado'}</li>
               <li>Protocolo (Bridge): {reproduciendo.manifest.protocolo} · Tipo de entrega: {reproduciendo.manifest.tipoEntrega}</li>
             </ul>
+            <button className="btn-ghost" style={{ alignSelf: 'flex-start' }} onClick={handleStop}>
+              ■ Detener reproducción
+            </button>
           </div>
         )}
       </header>
