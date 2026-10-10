@@ -3,23 +3,15 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import db from './db/DatabaseSingleton.js'; // Patrón Singleton (sin cambios)
 import PlanFactory from './factories/PlanFactory.js'; // Patrón Factory Method (nuevo)
-import DRMFactoryProvider from './drm/DRMFactoryProvider.js'; // Patrón Abstract Factory
 import StreamManifestBuilder from './streaming/StreamManifestBuilder.js'; // Patrón Builder
 import PerfilRecomendacionRegistry from './recommendation/PerfilRecomendacionRegistry.js'; // Patrón Prototype
-import { WidevineLicenseAdapter, PlayReadyLicenseAdapter } from './drm/DRMAdapters.js'; // Patrón Adapter
 import HLSProtocol from './streaming/HLSProtocol.js'; // Patrón Bridge (implementor concreto)
 import DASHProtocol from './streaming/DASHProtocol.js'; // Patrón Bridge (implementor concreto)
 import VODDelivery from './streaming/VODDelivery.js'; // Patrón Bridge (abstracción refinada)
 import LiveDelivery from './streaming/LiveDelivery.js'; // Patrón Bridge (abstracción refinada)
 import CatalogoService from './catalog/CatalogoService.js'; // Patrón Composite (catálogo: serie -> temporada -> episodio)
-import {
-  AuditoriaDecorator,
-  LimiteDispositivosDecorator,
-  RestriccionGeograficaDecorator,
-  LicenciaDenegadaError,
-} from './drm/LicenseDecorators.js'; // Patrón Decorator (reglas apilables sobre LicenseManager)
-import SesionesRegistry from './drm/SesionesRegistry.js'; // Sesiones activas (las usa el Decorator de límite)
-import AuditoriaLog from './drm/AuditoriaLog.js'; // Bitácora (la llena el Decorator de auditoría)
+import DRMFacade, { ContenidoNoEncontradoError, AccesoDenegadoError } from './drm/DRMFacade.js'; // Patrón Facade (único punto de entrada al subsistema DRM)
+import { LicenciaDenegadaError } from './drm/LicenseDecorators.js'; // Error de negocio que lanzan los Decorators
 
 const app = express();
 const PORT = 5000;
@@ -29,14 +21,7 @@ app.use(express.json());
 
 // Resumen de un nodo del catálogo (sirve igual para una película que para una
 // serie o una colección: es la ventaja del Composite).
-const resumirContenido = (nodo) => ({
-  id: nodo.id,
-  tipo: nodo.tipo(),
-  titulo: nodo.titulo,
-  duracionMin: nodo.getDuracion(),
-  duracionTexto: nodo.getDuracionFormateada(),
-  totalReproducibles: nodo.obtenerReproducibles().length,
-});
+const resumirContenido = (nodo) => CatalogoService.resumir(nodo);
 
 // Ruta: lista los planes disponibles usando el Factory Method
 // El cliente (frontend) puede pedir esta lista para mostrar precios/beneficios
@@ -208,22 +193,20 @@ app.put('/api/usuarios/:id/plan', async (req, res) => {
 
 // ------------------------------------------------------------------
 // Ruta: DRM — autoriza la reproducción de un contenido.
-// Patrón Abstract Factory: según el plan del usuario, se obtiene UNA
-// familia completa y coherente de componentes DRM (validador de token +
-// gestor de licencia + watermarker). El endpoint nunca decide a mano
-// qué clase concreta usar, solo llama a DRMFactoryProvider.
+// Patrón Facade: todo el subsistema de DRM (Abstract Factory, Adapter,
+// Decorator, Factory Method y Composite) se usa a través de UNA sola
+// llamada a DRMFacade. Este endpoint ya no conoce las fábricas, los
+// adapters ni el orden en que se apilan los decorators: solo resuelve
+// al usuario (BD), delega en la fachada y traduce los errores a HTTP.
+//
+// Cuerpo: { usuarioId, contenidoId, proveedorExterno?, dispositivoId?, pais? }
+//   proveedorExterno: 'widevine' | 'playready' | 'auto' (según el plan)
+//                     | omitido -> gestor propio de la familia DRM
 // ------------------------------------------------------------------
 app.post('/api/stream/autorizar', async (req, res) => {
   const { usuarioId, contenidoId, proveedorExterno, dispositivoId, pais } = req.body;
 
   try {
-    // Patrón Composite: el contenidoId puede ser una película, un episodio,
-    // una serie o una colección. El endpoint no necesita saber cuál es.
-    const contenido = CatalogoService.buscar(contenidoId);
-    if (!contenido) {
-      return res.status(404).json({ message: `Contenido "${contenidoId}" no encontrado en el catálogo.` });
-    }
-
     const result = await db.query('SELECT * FROM usuarios WHERE id = $1', [usuarioId]);
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Usuario no encontrado.' });
@@ -231,59 +214,28 @@ app.post('/api/stream/autorizar', async (req, res) => {
     const row = result.rows[0];
     const usuario = { id: row.id, planTipo: row.plan_tipo, activo: true };
 
-    // 1. Se obtiene la familia completa de productos DRM para este plan.
-    const drmFactory = DRMFactoryProvider.obtenerFactory(usuario.planTipo);
-
-    // 2. Se crean los 3 componentes de esa MISMA familia (garantía del patrón).
-    const validador = drmFactory.crearValidadorToken();
-    let licencias = drmFactory.crearGestorLicencia();
-    const watermarker = drmFactory.crearWatermarker();
-
-    // 2.1 Patrón Adapter: si el cliente pide explícitamente un proveedor
-    //     DRM comercial (Widevine/PlayReady), sustituimos el LicenseManager
-    //     de la familia por su Adapter correspondiente. El resto del flujo
-    //     (validación del token, marca de agua) no cambia en absoluto,
-    //     porque el Adapter sigue cumpliendo el mismo contrato
-    //     LicenseManager.emitirLicencia() que ya usa el Abstract Factory.
-    if (proveedorExterno === 'widevine') {
-      licencias = new WidevineLicenseAdapter();
-    } else if (proveedorExterno === 'playready') {
-      licencias = new PlayReadyLicenseAdapter();
-    }
-
-    // 2.2 Patrón Decorator: se ENVUELVE el gestor de licencias (sea el de la
-    //     familia o el Adapter) con reglas adicionales, como capas de cebolla.
-    //     Todas implementan LicenseManager, así que más abajo se sigue
-    //     llamando igual: licencias.emitirLicencia(...).
-    //
-    //     La llamada entra por la capa de afuera y baja hacia adentro:
-    //       Auditoría -> Límite de dispositivos -> Región -> gestor real
-    //
-    //     El límite de pantallas sale del plan creado por PlanFactory
-    //     (Factory Method): Básico=1, Premium=2, Familiar=4.
-    const plan = PlanFactory.crearPlan(usuario.planTipo);
-    licencias = new RestriccionGeograficaDecorator(licencias, pais || 'CO');
-    licencias = new LimiteDispositivosDecorator(licencias, plan, dispositivoId || 'dispositivo-por-defecto');
-    licencias = new AuditoriaDecorator(licencias);
-
-    // 3. Se usan en conjunto, sin que el endpoint sepa si es la familia
-    //    Básica o Premium, ni cuántos decorators hay.
-    const validacion = validador.validarToken(usuario, contenidoId);
-    if (!validacion.autorizado) {
-      return res.status(403).json({ message: 'Acceso denegado.', validacion });
-    }
-
-    const licencia = await licencias.emitirLicencia(usuario, contenidoId);
-    const marcaDeAgua = watermarker.aplicarMarcaDeAgua(usuario, contenidoId);
+    const { validacion, licencia, marcaDeAgua, contenido } = await DRMFacade.autorizarReproduccion({
+      usuario,
+      contenidoId,
+      proveedorExterno,
+      dispositivoId,
+      pais,
+    });
 
     res.status(200).json({
       message: 'Reproducción autorizada',
       validacion,
       licencia,
       marcaDeAgua,
-      contenido: resumirContenido(contenido),
+      contenido,
     });
   } catch (error) {
+    if (error instanceof ContenidoNoEncontradoError) {
+      return res.status(404).json({ message: error.message });
+    }
+    if (error instanceof AccesoDenegadoError) {
+      return res.status(403).json({ message: error.message, validacion: error.validacion });
+    }
     // Una regla de un Decorator rechazó la licencia (límite de pantallas, región...)
     if (error instanceof LicenciaDenegadaError) {
       return res.status(403).json({ message: error.message, codigo: error.codigo });
@@ -295,24 +247,24 @@ app.post('/api/stream/autorizar', async (req, res) => {
 
 // ------------------------------------------------------------------
 // Ruta: libera la pantalla en uso cuando el usuario deja de reproducir.
-// Sin esto, LimiteDispositivosDecorator seguiría contando la sesión
-// hasta que expire sola (10 minutos).
+// Sin esto, el límite de pantallas seguiría contando la sesión hasta
+// que expire sola (10 minutos). Pasa por la misma fachada.
 // ------------------------------------------------------------------
 app.post('/api/stream/detener', (req, res) => {
   const { usuarioId, sesionId } = req.body;
-  const liberada = SesionesRegistry.liberar(usuarioId, sesionId);
+  const { liberada, pantallasEnUso } = DRMFacade.detener(usuarioId, sesionId);
   res.status(200).json({
     message: liberada ? 'Sesión liberada' : 'La sesión no existía o ya había expirado',
-    pantallasEnUso: SesionesRegistry.activas(usuarioId).length,
+    pantallasEnUso,
   });
 });
 
 // ------------------------------------------------------------------
-// Ruta: consulta la bitácora que llena AuditoriaDecorator
-// (licencias emitidas y denegadas, de la más reciente a la más antigua).
+// Ruta: consulta la bitácora de auditoría de licencias
+// (emitidas y denegadas, de la más reciente a la más antigua).
 // ------------------------------------------------------------------
 app.get('/api/stream/auditoria', (req, res) => {
-  res.status(200).json({ eventos: AuditoriaLog.ultimos(50) });
+  res.status(200).json({ eventos: DRMFacade.auditoria(50) });
 });
 
 // ------------------------------------------------------------------

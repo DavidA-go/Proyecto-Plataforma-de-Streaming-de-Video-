@@ -144,6 +144,8 @@ export default function Dashboard() {
   const [catalogo, setCatalogo] = useState(null); // árbol del Composite
   const [soloMiPerfil, setSoloMiPerfil] = useState(false);
   const [errorCatalogo, setErrorCatalogo] = useState('');
+  const [auditoria, setAuditoria] = useState(null); // evidencia del Facade: bitácora DRM (null = panel cerrado)
+  const [errorAuditoria, setErrorAuditoria] = useState('');
 
   useEffect(() => {
     const stored = localStorage.getItem('cineverse_user');
@@ -193,9 +195,11 @@ export default function Dashboard() {
   }, [mostrarCatalogo, soloMiPerfil, user]);
 
   // Se dispara al darle clic al botón de play de cualquier tarjeta:
-  // 1) Abstract Factory (DRM): valida el token y emite la licencia según el plan.
-  //    - Si el plan es Premium/Familiar, además pedimos explícitamente el
-  //      proveedor DRM comercial "Widevine" -> dispara el patrón Adapter.
+  // 1) Facade (DRM): una sola llamada a /api/stream/autorizar. Por debajo, el
+  //    backend coordina Abstract Factory (valida el token y emite la licencia
+  //    según el plan), Adapter (Widevine/PlayReady), Factory Method y Decorators.
+  //    Ya no decidimos aquí el proveedor DRM: con proveedorExterno: 'auto' la
+  //    fachada elige Widevine (Premium/Familiar) o PlayReady (Free/Básico).
   // 2) Bridge: arma el manifiesto combinando tipo de entrega (vod) y
   //    protocolo (hls), apoyándose internamente en el Builder.
   const handlePlay = async (item) => {
@@ -205,23 +209,18 @@ export default function Dashboard() {
     // Las tarjetas fijas usan el slug del título; los nodos del catálogo traen su id.
     const contenidoId = item.id || slugify(item.title);
 
-    // El Adapter se dispara SIEMPRE, sin importar el plan, para que
-    // quede evidenciado en cualquier prueba: Premium/Familiar usa el
-    // adapter de Widevine, y Free/Básico usa el de PlayReady. Así se
-    // ve el mismo patrón resolviendo dos proveedores DRM distintos.
-    const proveedorExterno = ['premium', 'familiar'].includes(user.planTipo) ? 'widevine' : 'playready';
-
     try {
-      console.log(`🛡️ [Abstract Factory] Determinando familia DRM para usuario #${user.id} (plan ${user.planTipo})...`);
-      console.log(`🔌 [Adapter] Se usará el proveedor DRM externo "${proveedorExterno}" en vez del LicenseManager propio.`);
+      console.log(`🏛️ [Facade] Pidiendo autorización DRM para usuario #${user.id} (plan ${user.planTipo})...`);
       const autorizacion = await axios.post('http://localhost:5000/api/stream/autorizar', {
         usuarioId: user.id,
         contenidoId,
-        proveedorExterno,
+        // 'auto': el backend (DRMFacade) elige el Adapter según el plan:
+        // Premium/Familiar -> Widevine, Free/Básico -> PlayReady.
+        proveedorExterno: 'auto',
         dispositivoId: getDispositivoId(), // para el Decorator de límite de pantallas
         pais: 'CO', // para el Decorator de restricción geográfica
       });
-      console.log('✅ [Abstract Factory / Adapter / Decorator] Autorización + licencia recibida:', autorizacion.data);
+      console.log(`✅ [Facade] Autorización + licencia recibida (proveedor: ${autorizacion.data.licencia.proveedorExterno || 'propio'}):`, autorizacion.data);
 
       console.log(`🌉 [Bridge] Generando entrega VOD sobre HLS para "${item.title}"...`);
       const entrega = await axios.post('http://localhost:5000/api/stream/entrega', {
@@ -242,6 +241,26 @@ export default function Dashboard() {
     } catch (err) {
       console.error('❌ Error al autorizar/construir la reproducción:', err);
       setErrorReproduccion(err.response?.data?.message || 'No se pudo autorizar la reproducción.');
+    }
+  };
+
+  // Evidencia visible del Facade: consulta la bitácora de licencias (EMITIDA /
+  // DENEGADA) que el backend expone a través de DRMFacade.auditoria().
+  // Si el panel ya está abierto, el botón lo cierra.
+  const handleVerAuditoria = async () => {
+    if (auditoria) {
+      setAuditoria(null);
+      return;
+    }
+    try {
+      console.log('🏛️ [Facade] Consultando bitácora de auditoría (DRMFacade.auditoria)...');
+      const res = await axios.get('http://localhost:5000/api/stream/auditoria');
+      console.log('✅ [Facade] Eventos de auditoría recibidos:', res.data.eventos);
+      setAuditoria(res.data.eventos);
+      setErrorAuditoria('');
+    } catch (err) {
+      console.error('❌ No se pudo cargar la auditoría:', err);
+      setErrorAuditoria('No se pudo cargar la auditoría.');
     }
   };
 
@@ -398,6 +417,10 @@ export default function Dashboard() {
               <span className="dash-plan-badge">▶ Reproduciendo: {reproduciendo.titulo}</span>
             </div>
             <ul className="dash-plan-details">
+              <li>
+                Fachada (Facade): 1 sola llamada a DRMFacade.autorizarReproduccion coordinó Composite,
+                Abstract Factory, Adapter, Factory Method y Decorators
+              </li>
               <li>Licencia: {reproduciendo.licencia.licenciaId}</li>
               <li>Duración de la licencia: {reproduciendo.licencia.duracionMinutos} min</li>
               <li>Descarga offline: {reproduciendo.licencia.permiteOffline ? 'Sí' : 'No'}</li>
@@ -417,6 +440,42 @@ export default function Dashboard() {
             <button className="btn-ghost" style={{ alignSelf: 'flex-start' }} onClick={handleStop}>
               ■ Detener reproducción
             </button>
+          </div>
+        )}
+
+        {/* Evidencia del Facade: bitácora de licencias vía DRMFacade.auditoria().
+            Se muestra aunque no haya reproducción, para ver también las DENEGADAS. */}
+        <div style={{ marginTop: '12px' }}>
+          <button className="btn-ghost" onClick={handleVerAuditoria}>
+            {auditoria ? '✕ Cerrar auditoría' : '🏛️ Ver auditoría (Facade)'}
+          </button>
+        </div>
+        {errorAuditoria && (
+          <div className="alert-error" style={{ marginTop: '12px' }}>{errorAuditoria}</div>
+        )}
+        {auditoria && (
+          <div className="dash-plan-card" style={{ marginTop: '12px' }}>
+            <div className="dash-plan-info">
+              <span className="dash-plan-badge">
+                Bitácora DRM (Facade → DRMFacade.auditoria): {auditoria.length} evento(s)
+              </span>
+            </div>
+            {auditoria.length === 0 ? (
+              <ul className="dash-plan-details">
+                <li>Aún no hay eventos. Pulsa ▶ en un contenido y vuelve a consultar.</li>
+              </ul>
+            ) : (
+              <ul className="dash-plan-details">
+                {auditoria.map((ev) => (
+                  <li key={ev.id}>
+                    {ev.id} · {ev.resultado === 'EMITIDA' ? '✅ EMITIDA' : '⛔ DENEGADA'} · usuario #{ev.usuarioId} ·{' '}
+                    {ev.contenidoId} ·{' '}
+                    {ev.resultado === 'EMITIDA' ? `licencia ${ev.licenciaId}` : `motivo ${ev.motivo}`} ·{' '}
+                    {new Date(ev.fecha).toLocaleTimeString()}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
       </header>

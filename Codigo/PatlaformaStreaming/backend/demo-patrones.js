@@ -1,23 +1,17 @@
 /**
  * demo-patrones.js
  * ------------------------------------------------------------------
- * Demostración por consola de los patrones Composite y Decorator.
- * NO necesita PostgreSQL ni el servidor levantado:
+ * Demostración por consola de los patrones Composite y Facade (esta
+ * última orquesta por debajo Abstract Factory, Adapter, Decorator y
+ * Factory Method). NO necesita PostgreSQL ni el servidor levantado:
  *
  *     cd backend
  *     npm run demo:patrones
  * ------------------------------------------------------------------
  */
 import CatalogoService from './catalog/CatalogoService.js';
-import PlanFactory from './factories/PlanFactory.js';
-import { LicenseManagerPremium } from './drm/FamiliaPremium.js';
-import { WidevineLicenseAdapter } from './drm/DRMAdapters.js';
-import {
-  AuditoriaDecorator,
-  LimiteDispositivosDecorator,
-  RestriccionGeograficaDecorator,
-  LicenciaDenegadaError,
-} from './drm/LicenseDecorators.js';
+import DRMFacade, { ContenidoNoEncontradoError, AccesoDenegadoError } from './drm/DRMFacade.js';
+import { LicenciaDenegadaError } from './drm/LicenseDecorators.js';
 
 const linea = (t) => console.log(`\n${'='.repeat(64)}\n${t}\n${'='.repeat(64)}`);
 
@@ -45,30 +39,58 @@ const imprimir = (n, d = 0) => {
 imprimir(familiar);
 
 // ------------------------------------------------------------------
-linea('DECORATOR: capas apiladas sobre un LicenseManager');
+linea('FACADE: una sola llamada oculta todo el subsistema de DRM');
 // ------------------------------------------------------------------
-const usuario = { id: 99, planTipo: 'basico', activo: true };
-const plan = PlanFactory.crearPlan('basico'); // 1 pantalla
+console.log(
+  'Cada intento es UNA llamada a DRMFacade.autorizarReproduccion(). Por debajo la\n' +
+    'fachada coordina Composite, Abstract Factory, Adapter, Factory Method y Decorators.\n'
+);
 
-const armar = (base, dispositivo, pais) =>
-  new AuditoriaDecorator(
-    new LimiteDispositivosDecorator(new RestriccionGeograficaDecorator(base, pais), plan, dispositivo)
-  );
-
-const intentar = async (etiqueta, gestor, contenidoId) => {
+// Traduce el resultado (o el error de negocio) a una línea legible.
+const intentar = async (etiqueta, datos) => {
   try {
-    const lic = await gestor.emitirLicencia(usuario, contenidoId);
-    console.log(`  ✔ ${etiqueta}: licencia ${lic.licenciaId} | pantallas ${lic.pantallasEnUso}/${lic.pantallasMaximas} | ${lic.auditoriaId}`);
+    const r = await DRMFacade.autorizarReproduccion(datos);
+    const l = r.licencia;
+    console.log(
+      `  ✔ ${etiqueta}: ${l.licenciaId} | pantallas ${l.pantallasEnUso}/${l.pantallasMaximas}` +
+        ` | proveedor=${l.proveedorExterno || 'propio'} | ${l.auditoriaId}`
+    );
+    return r;
   } catch (e) {
-    if (!(e instanceof LicenciaDenegadaError)) throw e;
-    console.log(`  ✖ ${etiqueta}: DENEGADA (${e.codigo}) -> ${e.message}`);
+    if (e instanceof LicenciaDenegadaError) {
+      console.log(`  ✖ ${etiqueta}: DENEGADA (${e.codigo}) -> ${e.message}`);
+    } else if (e instanceof ContenidoNoEncontradoError) {
+      console.log(`  ✖ ${etiqueta}: NO ENCONTRADO -> ${e.message}`);
+    } else if (e instanceof AccesoDenegadoError) {
+      console.log(`  ✖ ${etiqueta}: ACCESO DENEGADO -> ${e.validacion.detalle}`);
+    } else {
+      throw e;
+    }
+    return null;
   }
 };
 
-console.log('\nPlan básico = 1 pantalla. Gestor base: LicenseManagerPremium.\n');
-await intentar('Dispositivo A, CO', armar(new LicenseManagerPremium(), 'A', 'CO'), 'ambar');
-await intentar('Dispositivo B, CO', armar(new LicenseManagerPremium(), 'B', 'CO'), 'ambar');
-await intentar('Dispositivo A, KP', armar(new LicenseManagerPremium(), 'A', 'KP'), 'ambar');
+const basico = { id: 99, planTipo: 'basico', activo: true }; // 1 pantalla
 
-console.log('\nLos MISMOS decorators sobre un Adapter (Widevine) en vez del gestor propio:\n');
-await intentar('Dispositivo A, MX (Widevine)', armar(new WidevineLicenseAdapter(), 'A', 'MX'), 'ambar');
+console.log('--- Plan básico = 1 pantalla (gestor propio de la familia Básica) ---\n');
+const primera = await intentar('Dispositivo A, CO', { usuario: basico, contenidoId: 'ambar', dispositivoId: 'A', pais: 'CO' });
+await intentar('Dispositivo B, CO', { usuario: basico, contenidoId: 'ambar', dispositivoId: 'B', pais: 'CO' });
+await intentar('Dispositivo A, KP', { usuario: basico, contenidoId: 'ambar', dispositivoId: 'A', pais: 'KP' });
+
+console.log('\n--- DRMFacade.detener(): libera la pantalla del dispositivo A ---\n');
+const liberada = DRMFacade.detener(basico.id, primera.licencia.sesionId);
+console.log(`  sesión ${primera.licencia.sesionId} liberada=${liberada.liberada} | pantallas en uso: ${liberada.pantallasEnUso}`);
+await intentar('Dispositivo B, CO (ahora sí)', { usuario: basico, contenidoId: 'ambar', dispositivoId: 'B', pais: 'CO' });
+
+console.log('\n--- proveedorExterno: "auto" (el Adapter se elige por plan, ya no en el frontend) ---\n');
+await intentar('Premium  -> auto', { usuario: { id: 100, planTipo: 'premium', activo: true }, contenidoId: 'horizonte-nocturno', dispositivoId: 'P1', pais: 'MX', proveedorExterno: 'auto' });
+await intentar('Básico   -> auto', { usuario: { id: 101, planTipo: 'basico', activo: true }, contenidoId: 'horizonte-nocturno', dispositivoId: 'P2', pais: 'MX', proveedorExterno: 'auto' });
+
+console.log('\n--- Errores de negocio tipados (la fachada los lanza, el cliente decide qué hacer) ---\n');
+await intentar('Contenido inexistente', { usuario: basico, contenidoId: 'no-existe', dispositivoId: 'A', pais: 'CO' });
+await intentar('Usuario sin plan', { usuario: { id: 102, planTipo: null }, contenidoId: 'ambar', dispositivoId: 'Z', pais: 'CO' });
+
+console.log('\n--- DRMFacade.auditoria(): bitácora que llenó el AuditoriaDecorator ---\n');
+for (const ev of DRMFacade.auditoria(5).reverse()) {
+  console.log(`  ${ev.id} ${ev.resultado.padEnd(8)} usuario=${ev.usuarioId} contenido=${ev.contenidoId}${ev.motivo ? ` motivo=${ev.motivo}` : ''}`);
+}

@@ -21,6 +21,22 @@ class CatalogoService {
     return CatalogoService.raiz.buscar(id);
   }
 
+  /**
+   * Resumen de un nodo cualquiera (película, serie, colección...). Sirve
+   * igual para hojas y grupos: es la ventaja del Composite. Lo comparten
+   * DRMFacade y los endpoints de index.js.
+   */
+  static resumir(nodo) {
+    return {
+      id: nodo.id,
+      tipo: nodo.tipo(),
+      titulo: nodo.titulo,
+      duracionMin: nodo.getDuracion(),
+      duracionTexto: nodo.getDuracionFormateada(),
+      totalReproducibles: nodo.obtenerReproducibles().length,
+    };
+  }
+
   /** Árbol podado: solo lo que coincide con alguno de los géneros pedidos. */
   static filtrarPorGeneros(generos) {
     const normalizados = generos.map((g) => g.toLowerCase().trim()).filter(Boolean);

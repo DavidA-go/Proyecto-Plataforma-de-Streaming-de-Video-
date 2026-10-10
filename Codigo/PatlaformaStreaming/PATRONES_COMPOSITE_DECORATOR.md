@@ -37,7 +37,7 @@ Operaciones comunes (misma firma en hojas y grupos): `getDuracion()`, `obtenerRe
 | `LimiteDispositivosDecorator` | ANTES: rechaza si se superan las pantallas del plan (`LIMITE_DISPOSITIVOS`); DESPUÉS: registra la sesión |
 | `AuditoriaDecorator` | DESPUÉS: anota en la bitácora licencias emitidas y denegadas |
 
-Cadena armada en `POST /api/stream/autorizar` (la llamada entra por la capa externa):
+Cadena armada en `DRMFacade` (ver `PATRON_FACADE.md`; el endpoint `POST /api/stream/autorizar` ya no la conoce). La llamada entra por la capa externa:
 
 ```
 Auditoría → Límite de dispositivos → Región → gestor base (Familia Básica/Premium o Adapter)
@@ -66,6 +66,8 @@ npm run demo:patrones
    **otro navegador o ventana de incógnito** (otro `dispositivoId`) → la segunda reproducción es rechazada.
    Pulsa *Detener reproducción* en la primera y vuelve a intentarlo.
 3. `GET http://localhost:5000/api/stream/auditoria` para ver las licencias EMITIDAS y DENEGADAS.
+
+> Desde que existe `DRMFacade`, la demo de consola y el endpoint usan la fachada; el detalle está en `PATRON_FACADE.md`.
 
 **Con curl** (cambia `dispositivoId` y `pais` para activar cada regla):
 ```

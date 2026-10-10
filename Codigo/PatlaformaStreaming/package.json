@@ -3,10 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-"scripts": {
+  "scripts": {
     "dev:frontend": "vite",
     "dev:backend": "node backend/index.js",
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "demo:patrones": "node backend/demo-patrones.js",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
