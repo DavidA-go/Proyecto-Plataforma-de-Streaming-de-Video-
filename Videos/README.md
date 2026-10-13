@@ -9,3 +9,9 @@
 [![Ver Video en YouTube](https://img.youtube.com/vi/pyKlcOJUF5g/0.jpg)](https://youtu.be/pyKlcOJUF5g)
 
 > 👆 *Haz clic en la imagen para ver el video explicativo en YouTube.*
+
+> # Video Explicativo: Patrones de Facade
+
+[![Ver Video en YouTube](https://img.youtube.com/vi/gPiQ3_NHuVI/0.jpg)](https://youtu.be/gPiQ3_NHuVI)
+
+> 👆 *Haz clic en la imagen para ver el video explicativo en YouTube.*
