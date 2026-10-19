@@ -21,7 +21,7 @@ export default function Login() {
 
       if (response.status === 200) {
         // Guardamos el usuario para poder mostrarlo en el dashboard
-        localStorage.setItem('cineverse_user', JSON.stringify(response.data.user));
+        localStorage.setItem('cineverse_user', JSON.stringify({ ...response.data.user, token: response.data.token }));
         navigate('/dashboard');
       }
     } catch (err) {

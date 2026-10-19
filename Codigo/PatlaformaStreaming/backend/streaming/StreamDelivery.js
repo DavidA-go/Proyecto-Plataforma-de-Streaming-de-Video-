@@ -48,9 +48,10 @@ class StreamDelivery {
 
     const builder = new StreamManifestBuilder().setContenido(contenidoId);
 
-    for (const { resolucion, bitrateKbps } of this.calidadesDisponibles()) {
-      const url = this.protocolo.construirUrl(contenidoId, resolucion);
-      builder.agregarCalidad(resolucion, bitrateKbps, url);
+    // Flyweight: cada calidad es un objeto compartido; solo la URL es propia de este contenido.
+    for (const calidad of this.calidadesDisponibles()) {
+      const url = this.protocolo.construirUrl(contenidoId, calidad.resolucion);
+      builder.agregarCalidadCompartida(calidad, url);
     }
 
     builder.asignarTokenDRM(tokenDRM || null);

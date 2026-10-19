@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api';
 
 // Convierte el título de una tarjeta en un id simple para mandarlo al backend
 // (ej. "El Último Vuelo" -> "el-ultimo-vuelo")
@@ -163,8 +163,8 @@ export default function Dashboard() {
     const categoriaBase = CATEGORIA_POR_PLAN[user.planTipo] || 'accionAventura';
     console.log(`🧬 [Prototype] Pidiendo perfil de recomendación para "${user.nombre}" (categoría base: ${categoriaBase})...`);
 
-    axios
-      .post('http://localhost:5000/api/recomendaciones/perfil', { categoriaBase })
+    api
+      .post('/api/recomendaciones/perfil', { categoriaBase })
       .then((res) => {
         console.log(`✅ [Prototype] Perfil clonado recibido para "${user.nombre}":`, res.data.perfil);
         setPerfilRecomendado(res.data.perfil);
@@ -181,8 +181,8 @@ export default function Dashboard() {
     const categoriaBase = CATEGORIA_POR_PLAN[user.planTipo] || 'accionAventura';
     const params = soloMiPerfil ? { perfil: categoriaBase } : {};
 
-    axios
-      .get('http://localhost:5000/api/catalogo', { params })
+    api
+      .get('/api/catalogo', { params })
       .then((res) => {
         console.log('🌳 [Composite] Árbol del catálogo recibido:', res.data.catalogo);
         setCatalogo(res.data.catalogo);
@@ -190,7 +190,7 @@ export default function Dashboard() {
       })
       .catch((err) => {
         console.error('❌ No se pudo cargar el catálogo:', err);
-        setErrorCatalogo('No se pudo cargar el catálogo.');
+        setErrorCatalogo(err.response?.data?.message || 'No se pudo cargar el catálogo.');
       });
   }, [mostrarCatalogo, soloMiPerfil, user]);
 
@@ -211,9 +211,8 @@ export default function Dashboard() {
 
     try {
       console.log(`🏛️ [Facade] Pidiendo autorización DRM para usuario #${user.id} (plan ${user.planTipo})...`);
-      const autorizacion = await axios.post('http://localhost:5000/api/stream/autorizar', {
-        usuarioId: user.id,
-        contenidoId,
+      const autorizacion = await api.post('/api/stream/autorizar', {
+        contenidoId, // el usuario sale del token: el Proxy ignora cualquier usuarioId
         // 'auto': el backend (DRMFacade) elige el Adapter según el plan:
         // Premium/Familiar -> Widevine, Free/Básico -> PlayReady.
         proveedorExterno: 'auto',
@@ -223,7 +222,7 @@ export default function Dashboard() {
       console.log(`✅ [Facade] Autorización + licencia recibida (proveedor: ${autorizacion.data.licencia.proveedorExterno || 'propio'}):`, autorizacion.data);
 
       console.log(`🌉 [Bridge] Generando entrega VOD sobre HLS para "${item.title}"...`);
-      const entrega = await axios.post('http://localhost:5000/api/stream/entrega', {
+      const entrega = await api.post('/api/stream/entrega', {
         contenidoId,
         tokenDRM: autorizacion.data.licencia.licenciaId,
         tipoEntrega: 'vod',
@@ -254,13 +253,13 @@ export default function Dashboard() {
     }
     try {
       console.log('🏛️ [Facade] Consultando bitácora de auditoría (DRMFacade.auditoria)...');
-      const res = await axios.get('http://localhost:5000/api/stream/auditoria');
+      const res = await api.get('/api/stream/auditoria');
       console.log('✅ [Facade] Eventos de auditoría recibidos:', res.data.eventos);
       setAuditoria(res.data.eventos);
       setErrorAuditoria('');
     } catch (err) {
       console.error('❌ No se pudo cargar la auditoría:', err);
-      setErrorAuditoria('No se pudo cargar la auditoría.');
+      setErrorAuditoria(err.response?.data?.message || 'No se pudo cargar la auditoría.');
     }
   };
 
@@ -268,7 +267,7 @@ export default function Dashboard() {
   const handleStop = async () => {
     if (!user || !reproduciendo) return;
     try {
-      await axios.post('http://localhost:5000/api/stream/detener', {
+      await api.post('/api/stream/detener', {
         usuarioId: user.id,
         sesionId: reproduciendo.licencia.sesionId,
       });
@@ -280,8 +279,8 @@ export default function Dashboard() {
 
   const handleLogout = () => {
     if (user && reproduciendo) {
-      axios
-        .post('http://localhost:5000/api/stream/detener', {
+      api
+        .post('/api/stream/detener', {
           usuarioId: user.id,
           sesionId: reproduciendo.licencia.sesionId,
         })
@@ -331,8 +330,13 @@ export default function Dashboard() {
         <div className="dash-user">
           <div className="dash-user-info">
             <span className="dash-user-name">{displayName}</span>
-            {user?.rol && <span className="dash-user-role">{user.rol}</span>}
+            {user?.rol && <span className="dash-user-role">{user.rol === 'admin' ? 'Administrador' : 'Usuario'}</span>}
           </div>
+          {user?.rol === 'admin' && (
+            <Link to="/admin" className="btn-ghost" style={{ padding: '8px 16px' }}>
+              Panel admin
+            </Link>
+          )}
           <div className="dash-avatar">{initial}</div>
           <button className="dash-logout" onClick={handleLogout}>
             Cerrar sesión
@@ -443,6 +447,10 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Proxy de protección: la auditoría DRM solo la ve el rol admin (el backend
+            además responde 403 a cualquier otro rol, aunque se llame a la API a mano). */}
+        {user?.rol === 'admin' && (
+          <>
         {/* Evidencia del Facade: bitácora de licencias vía DRMFacade.auditoria().
             Se muestra aunque no haya reproducción, para ver también las DENEGADAS. */}
         <div style={{ marginTop: '12px' }}>
@@ -477,6 +485,8 @@ export default function Dashboard() {
               </ul>
             )}
           </div>
+        )}
+          </>
         )}
       </header>
 

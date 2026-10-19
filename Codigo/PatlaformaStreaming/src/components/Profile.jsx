@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api';
 
 const PLAN_LABELS = {
   free: 'Free',
@@ -33,7 +33,7 @@ export default function Profile() {
 
     const fetchPlanes = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/planes');
+        const response = await api.get('/api/planes');
         setPlanes(response.data.planes || []);
       } catch (err) {
         console.error('No se pudieron cargar los planes:', err);
@@ -49,13 +49,14 @@ export default function Profile() {
     setError('');
 
     try {
-      const response = await axios.put(`http://localhost:5000/api/usuarios/${user.id}/plan`, {
+      const response = await api.put(`/api/usuarios/${user.id}/plan`, {
         tipoPlan,
       });
 
       const updatedUser = response.data.user;
-      localStorage.setItem('cineverse_user', JSON.stringify(updatedUser));
-      setUser(updatedUser);
+      const conToken = { ...updatedUser, token: user.token }; // el token no viene en la respuesta
+      localStorage.setItem('cineverse_user', JSON.stringify(conToken));
+      setUser(conToken);
       setMensaje('¡Tu plan se actualizó con éxito!');
     } catch (err) {
       setError(err.response?.data?.message || 'No se pudo actualizar el plan.');

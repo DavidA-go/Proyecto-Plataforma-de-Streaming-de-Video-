@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "demo:patrones": "node demo-patrones.js"
+    "demo:patrones": "node demo-patrones.js",
+    "crear:admin": "node db/crear-admin.js",
+    "test:patrones": "node test-flyweight-proxy.js"
   },
   "keywords": [],
   "author": "",

@@ -30,6 +30,16 @@ class StreamManifestBuilder {
     return this;
   }
 
+  /**
+   * Flyweight: recibe la calidad COMPARTIDA (estado intrínseco: resolución,
+   * bitrate...) y le suma lo extrínseco (la URL de ESTE contenido).
+   */
+  agregarCalidadCompartida(calidad, url) {
+    console.log(`🧱 [Builder] agregarCalidadCompartida("${calidad.resolucion}") <- Flyweight`);
+    this.manifest.calidades.push(calidad.aEntrada(url));
+    return this;
+  }
+
   agregarPistaAudio(idioma, url) {
     console.log(`🧱 [Builder] agregarPistaAudio("${idioma}")`);
     this.manifest.pistasAudio.push({ idioma, url });

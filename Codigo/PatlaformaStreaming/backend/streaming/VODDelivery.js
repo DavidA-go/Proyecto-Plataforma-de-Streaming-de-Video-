@@ -1,4 +1,5 @@
 import StreamDelivery from './StreamDelivery.js';
+import CalidadVideoFactory from '../flyweight/CalidadVideoFactory.js'; // Patrón Flyweight
 
 /**
  * VODDelivery.js
@@ -11,11 +12,8 @@ import StreamDelivery from './StreamDelivery.js';
  */
 class VODDelivery extends StreamDelivery {
   calidadesDisponibles() {
-    return [
-      { resolucion: '360p', bitrateKbps: 800 },
-      { resolucion: '720p', bitrateKbps: 2500 },
-      { resolucion: '1080p', bitrateKbps: 5000 },
-    ];
+    // Flyweight: las calidades son objetos COMPARTIDOS (una sola instancia por resolución).
+    return ['360p', '720p', '1080p'].map((r) => CalidadVideoFactory.obtener(r));
   }
 
   tipoEntrega() {

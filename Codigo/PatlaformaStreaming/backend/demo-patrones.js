@@ -94,3 +94,49 @@ console.log('\n--- DRMFacade.auditoria(): bitácora que llenó el AuditoriaDecor
 for (const ev of DRMFacade.auditoria(5).reverse()) {
   console.log(`  ${ev.id} ${ev.resultado.padEnd(8)} usuario=${ev.usuarioId} contenido=${ev.contenidoId}${ev.motivo ? ` motivo=${ev.motivo}` : ''}`);
 }
+
+// ------------------------------------------------------------------
+linea('FLYWEIGHT: roles y calidades de video compartidos');
+// ------------------------------------------------------------------
+import RolFlyweightFactory from './flyweight/RolFlyweightFactory.js';
+import CalidadVideoFactory from './flyweight/CalidadVideoFactory.js';
+import VODDelivery from './streaming/VODDelivery.js';
+import HLSProtocol from './streaming/HLSProtocol.js';
+
+const unaVez = Array.from({ length: 1000 }, () => RolFlyweightFactory.obtener('usuario'));
+console.log(`\n1000 usuarios piden su rol -> ¿todos el mismo objeto? ${unaVez.every((r) => r === unaVez[0])}`);
+
+const vod = new VODDelivery(new HLSProtocol());
+for (const id of ['ambar', 'horizonte-nocturno-t1-e1', 'horizonte-nocturno-t1-e2']) vod.generarManifest(id, null);
+console.log('Roles   :', RolFlyweightFactory.estadisticas());
+console.log('Calidades:', CalidadVideoFactory.estadisticas());
+
+// ------------------------------------------------------------------
+linea('PROXY DE PROTECCIÓN: mismo servicio, distinto rol');
+// ------------------------------------------------------------------
+import ServiciosProxy from './proxy/ServiciosProxy.js';
+import { PermisoDenegadoError, NoAutenticadoError } from './proxy/errores.js';
+
+const actores = {
+  invitado: null,
+  usuario: { id: 10, rol: 'usuario' },
+  admin: { id: 1, rol: 'admin' },
+};
+const pruebas = [
+  ['catalogo.listar', (s) => s.catalogo.listar()],
+  ['streaming.generarEntrega', (s) => s.streaming.generarEntrega({ contenidoId: 'ambar', tipoEntrega: 'vod', protocolo: 'hls' })],
+  ['drm.auditoria', (s) => s.drm.auditoria(5)],
+  ['sistema.accesos', (s) => s.sistema.accesos(5)],
+];
+for (const [rol, actor] of Object.entries(actores)) {
+  const s = ServiciosProxy.para(actor);
+  for (const [nombre, fn] of pruebas) {
+    try {
+      fn(s);
+      console.log(`  ${rol.padEnd(8)} ${nombre.padEnd(26)} ✔ permitido`);
+    } catch (e) {
+      if (e instanceof PermisoDenegadoError || e instanceof NoAutenticadoError) console.log(`  ${rol.padEnd(8)} ${nombre.padEnd(26)} ⛔ ${e.message}`);
+      else throw e;
+    }
+  }
+}
