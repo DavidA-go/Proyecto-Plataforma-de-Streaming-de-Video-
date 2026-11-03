@@ -9,7 +9,10 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "demo:patrones": "node demo-patrones.js",
     "crear:admin": "node db/crear-admin.js",
-    "test:patrones": "node test-flyweight-proxy.js"
+    "test:patrones": "node test-flyweight-proxy.js",
+    "test:chain": "node test-chain.js",
+    "demo:command": "node demo-command.js",
+    "test:command": "node test-command.js"
   },
   "keywords": [],
   "author": "",

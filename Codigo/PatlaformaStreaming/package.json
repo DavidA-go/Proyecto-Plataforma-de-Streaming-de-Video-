@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "crear:admin": "node backend/db/crear-admin.js",
-    "test:patrones": "node backend/test-flyweight-proxy.js"
+    "test:patrones": "node backend/test-flyweight-proxy.js",
+    "test:chain": "node backend/test-chain.js"
   },
   "dependencies": {
     "axios": "^1.20.0",

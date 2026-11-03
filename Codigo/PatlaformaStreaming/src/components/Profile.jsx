@@ -14,6 +14,7 @@ export default function Profile() {
   const [user, setUser] = useState(null);
   const [planes, setPlanes] = useState([]);
   const [tipoPlan, setTipoPlan] = useState('free');
+  const [puedeDeshacer, setPuedeDeshacer] = useState(false); // Command: ¿hay un cambio de plan para deshacer?
   const [loading, setLoading] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
@@ -40,6 +41,16 @@ export default function Profile() {
       }
     };
     fetchPlanes();
+
+    const fetchHistorial = async () => {
+      try {
+        const response = await api.get(`/api/usuarios/${parsedUser.id}/plan/historial`);
+        setPuedeDeshacer((response.data.historial || []).length > 0);
+      } catch (err) {
+        console.error('No se pudo cargar el historial de cambios de plan:', err);
+      }
+    };
+    fetchHistorial();
   }, [navigate]);
 
   const handleGuardarPlan = async () => {
@@ -58,8 +69,31 @@ export default function Profile() {
       localStorage.setItem('cineverse_user', JSON.stringify(conToken));
       setUser(conToken);
       setMensaje('¡Tu plan se actualizó con éxito!');
+      setPuedeDeshacer(true);
     } catch (err) {
       setError(err.response?.data?.message || 'No se pudo actualizar el plan.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Patrón Command: deshace el último cambio de plan (Command.undo en el backend).
+  const handleDeshacerPlan = async () => {
+    if (!user) return;
+    setLoading(true);
+    setMensaje('');
+    setError('');
+
+    try {
+      const response = await api.post(`/api/usuarios/${user.id}/plan/deshacer`);
+      const conToken = { ...response.data.user, token: user.token };
+      localStorage.setItem('cineverse_user', JSON.stringify(conToken));
+      setUser(conToken);
+      setTipoPlan(conToken.planTipo || 'free');
+      setPuedeDeshacer(Boolean(response.data.puedeDeshacer));
+      setMensaje('Se deshizo el último cambio de plan.');
+    } catch (err) {
+      setError(err.response?.data?.message || 'No se pudo deshacer el cambio.');
     } finally {
       setLoading(false);
     }
@@ -128,6 +162,15 @@ export default function Profile() {
           disabled={loading || tipoPlan === user.planTipo}
         >
           {loading ? 'Guardando...' : 'Guardar cambios'}
+        </button>
+
+        <button
+          className="btn-primary"
+          style={{ width: 'auto', padding: '13px 34px', marginTop: '28px', marginLeft: '12px', background: 'transparent', border: '1px solid currentColor' }}
+          onClick={handleDeshacerPlan}
+          disabled={loading || !puedeDeshacer}
+        >
+          Deshacer último cambio
         </button>
       </main>
     </div>

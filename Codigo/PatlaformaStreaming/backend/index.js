@@ -10,6 +10,9 @@ import { PermisoDenegadoError, NoAutenticadoError, ErrorNegocio } from './proxy/
 import RolFlyweightFactory from './flyweight/RolFlyweightFactory.js'; // Patrón Flyweight (roles compartidos)
 import TokenService from './auth/TokenService.js';
 import { usuarioPublico } from './services/SuscripcionServicio.js';
+import CadenaRegistro from './chain/CadenaRegistro.js'; // Patrón Chain of Responsibility (validación del registro)
+import invoker from './commands/CommandInvoker.js'; // Patrón Command (invocador con historial por usuario)
+import { CambiarPlanCommand } from './commands/UserCommands.js'; // Patrón Command (cambio de plan reversible)
 
 const app = express();
 const PORT = 5000;
@@ -71,27 +74,18 @@ app.get('/api/planes', ruta((req, res, s) => {
 app.post('/api/register', async (req, res) => {
   const { username, email, password, confirmPassword, tipoPlan } = req.body;
 
-  // 1. Validar que las contraseñas coincidan
-  if (password !== confirmPassword) {
-    return res.status(400).json({ message: 'Las contraseñas no coinciden.' });
-  }
-
-  // 2. Crear el plan de suscripción mediante el Factory Method.
-  //    El endpoint no sabe (ni le importa) si es FreePlan, PremiumPlan, etc.
-  //    Solo conoce la interfaz común SubscriptionPlan.
-  let plan;
   try {
-    plan = PlanFactory.crearPlan(tipoPlan);
-  } catch (factoryError) {
-    return res.status(400).json({ message: factoryError.message });
-  }
-
-  try {
-    // 3. Verificar si el correo ya existe
-    const userExist = await db.query('SELECT * FROM usuarios WHERE correo = $1', [email]);
-    if (userExist.rows.length > 0) {
-      return res.status(400).json({ message: 'El correo ya está registrado.' });
+    // 1-3. Chain of Responsibility: la solicitud recorre la cadena de validación
+    //      (campos -> contraseñas -> plan [Factory Method] -> correo disponible).
+    //      El primer eslabón que falla corta la cadena y devuelve su motivo.
+    //      Si todo pasa, la cadena deja el plan creado por la fábrica en solicitud.plan.
+    const { valido, message, status, solicitud } = await CadenaRegistro.validar({
+      username, email, password, confirmPassword, tipoPlan,
+    });
+    if (!valido) {
+      return res.status(status).json({ message });
     }
+    const plan = solicitud.plan;
 
     // 4. Encriptar la contraseña
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -157,10 +151,32 @@ app.post('/api/login', async (req, res) => {
 });
 
 // Ruta: cambiar el plan. Proxy: tu propio plan -> usuario o admin; el de otra persona -> solo admin.
+// Patrón Command: el cambio se ejecuta como un CambiarPlanCommand a través del invocador,
+// que lo guarda en el historial del usuario afectado para poder deshacerlo.
 app.put('/api/usuarios/:id/plan', ruta(async (req, res, s) => {
-  const user = await s.suscripcion.cambiarPlan(req.params.id, req.body.tipoPlan);
+  const comando = new CambiarPlanCommand(s.suscripcion, req.params.id, req.body.tipoPlan);
+  const user = await invoker.ejecutarComando(comando, req.params.id);
   console.log(`🔔 Usuario #${user.id} (${user.correo}) cambió su plan -> ahora es "${user.planTipo}"`);
-  res.status(200).json({ message: 'Plan actualizado con éxito', user });
+  res.status(200).json({ message: 'Plan actualizado con éxito', user, puedeDeshacer: true });
+}));
+
+// Ruta: historial de cambios de plan (Command) de un usuario. Mismos permisos que cambiar el plan.
+app.get('/api/usuarios/:id/plan/historial', ruta(async (req, res, s) => {
+  await s.suscripcion.obtenerPlan(req.params.id); // el proxy autoriza (propio -> usuario/admin; ajeno -> admin)
+  res.status(200).json({ historial: invoker.historialDe(req.params.id) });
+}));
+
+// Ruta: deshace el último cambio de plan (Command.undo). Mismos permisos que cambiar el plan.
+app.post('/api/usuarios/:id/plan/deshacer', ruta(async (req, res, s) => {
+  await s.suscripcion.obtenerPlan(req.params.id); // autoriza ANTES de tocar el historial
+  const r = await invoker.deshacerUltimoComando(req.params.id);
+  if (!r.deshecho) return res.status(400).json({ message: 'No hay cambios de plan para deshacer.' });
+  console.log(`↩️  Usuario #${r.resultado.id}: se deshizo "${r.comando}" -> plan "${r.resultado.planTipo}"`);
+  res.status(200).json({
+    message: 'Cambio de plan deshecho',
+    user: r.resultado,
+    puedeDeshacer: invoker.historialDe(req.params.id).length > 0,
+  });
 }));
 
 // ------------------------------------------------------------------

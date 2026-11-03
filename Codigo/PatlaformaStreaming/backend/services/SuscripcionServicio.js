@@ -14,10 +14,17 @@ export const usuarioPublico = (row) => ({
   descargasOffline: row.descargas_offline,
 });
 
-/** SUJETO REAL (Proxy) — suscripciones. Interfaz: listarPlanes(), cambiarPlan(). */
+/** SUJETO REAL (Proxy) — suscripciones. Interfaz: listarPlanes(), obtenerPlan(), cambiarPlan(). */
 class SuscripcionServicio {
   listarPlanes() {
     return PlanFactory.tiposDisponibles();
+  }
+
+  /** Plan actual del usuario (lo necesita Command para poder deshacer un cambio). */
+  async obtenerPlan(usuarioId) {
+    const r = await db.query('SELECT * FROM usuarios WHERE id = $1', [usuarioId]);
+    if (r.rows.length === 0) throw new ErrorNegocio('Usuario no encontrado.', 404);
+    return usuarioPublico(r.rows[0]);
   }
 
   async cambiarPlan(usuarioId, tipoPlan) {
