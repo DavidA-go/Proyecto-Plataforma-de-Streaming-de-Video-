@@ -12,6 +12,8 @@
  * sin preguntar antes "¿eres una película o una serie?".
  * ------------------------------------------------------------------
  */
+import { crearIterador } from './iterator/crearIterador.js';
+
 class ElementoContenido {
   constructor(id, titulo, generos = []) {
     if (new.target === ElementoContenido) {
@@ -44,6 +46,27 @@ class ElementoContenido {
   /** Géneros del elemento (en un grupo, la unión de los géneros de sus hijos). */
   getGeneros() {
     return this.generos;
+  }
+
+  /** ¿Es una hoja que realmente se reproduce? (los grupos lo sobrescriben con false). */
+  esReproducible() {
+    return true;
+  }
+
+  /** Hijos directos. Una hoja no tiene (lista vacía); ContenidoCompuesto devuelve los suyos. */
+  getHijos() {
+    return [];
+  }
+
+  /**
+   * ITERATOR (createIterator del patrón): entrega un iterador para recorrer
+   * este nodo y todo lo que cuelga de él, sin que el cliente conozca la
+   * estructura del árbol.
+   * @param {'profundidad'|'anchura'|'reproducibles'} orden
+   * @param {(nodo)=>boolean} predicado filtro opcional
+   */
+  crearIterador(orden = 'profundidad', predicado) {
+    return crearIterador(this, orden, predicado);
   }
 
   /** Busca un nodo por id dentro de este elemento (y de sus descendientes). */

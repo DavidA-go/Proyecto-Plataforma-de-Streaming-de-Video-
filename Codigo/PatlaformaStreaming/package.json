@@ -13,7 +13,9 @@
     "preview": "vite preview",
     "crear:admin": "node backend/db/crear-admin.js",
     "test:patrones": "node backend/test-flyweight-proxy.js",
-    "test:chain": "node backend/test-chain.js"
+    "test:chain": "node backend/test-chain.js",
+    "test:comportamiento": "node backend/test-comportamiento.js",
+    "demo:comportamiento": "node backend/demo-comportamiento.js"
   },
   "dependencies": {
     "axios": "^1.20.0",

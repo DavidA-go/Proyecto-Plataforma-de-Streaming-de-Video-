@@ -47,18 +47,29 @@ class ManejadorValidacion {
     throw new Error('validar() debe implementarse en el manejador concreto.');
   }
 
-  /** Recorre la cadena: aplica la regla propia y, si pasa, delega en el siguiente. */
-  async manejar(solicitud) {
+  /**
+   * Recorre la cadena: aplica la regla propia y, si pasa, delega en el siguiente.
+   * `traza` (opcional) es un arreglo donde cada eslabón anota { regla, resultado, message? }
+   * para poder MOSTRAR por dónde pasó la solicitud (lo usa el Dashboard).
+   */
+  async manejar(solicitud, traza = null) {
     const rechazo = await this.validar(solicitud);
 
     if (rechazo) {
       console.log(`⛓️  [Chain:${this.regla}] RECHAZA -> ${rechazo.message}`);
+      traza?.push({ regla: this.regla, resultado: 'RECHAZADA', message: rechazo.message });
       return { valido: false, regla: this.regla, message: rechazo.message, status: rechazo.status ?? 400 };
     }
 
     console.log(`⛓️  [Chain:${this.regla}] OK`);
-    if (this.siguiente) return this.siguiente.manejar(solicitud);
+    traza?.push({ regla: this.regla, resultado: 'OK' });
+    if (this.siguiente) return this.siguiente.manejar(solicitud, traza);
     return { valido: true };
+  }
+
+  /** Nombres de las reglas de esta cadena, en orden (desde este eslabón hasta el final). */
+  reglas() {
+    return [this.regla, ...(this.siguiente ? this.siguiente.reglas() : [])];
   }
 }
 

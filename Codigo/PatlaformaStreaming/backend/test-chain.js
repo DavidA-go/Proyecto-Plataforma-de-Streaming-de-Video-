@@ -69,6 +69,13 @@ await prueba('se puede extender con un eslabón nuevo sin tocar los existentes',
   assert.equal(r.regla, 'SinCorreoGratisHandler');
 });
 
+await prueba('traza (Dashboard): cada regla queda como OK / RECHAZADA / OMITIDA', async () => {
+  const r = await CadenaRegistro.validar({ ...base, confirmPassword: 'otra' }, opciones);
+  assert.deepEqual(r.eslabones.map((e) => e.resultado), ['OK', 'RECHAZADA', 'OMITIDA', 'OMITIDA']);
+  const v = await CadenaRegistro.validar(base, opciones);
+  assert.deepEqual(v.eslabones.map((e) => e.resultado), ['OK', 'OK', 'OK', 'OK']);
+});
+
 await prueba('ManejadorValidacion es abstracta', async () => {
   assert.throws(() => new ManejadorValidacion(), /abstracta/);
 });

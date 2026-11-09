@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../api';
+import PatronesComportamiento from './PatronesComportamiento';
 
 // Convierte el título de una tarjeta en un id simple para mandarlo al backend
 // (ej. "El Último Vuelo" -> "el-ultimo-vuelo")
@@ -141,6 +142,7 @@ export default function Dashboard() {
   const [perfilRecomendado, setPerfilRecomendado] = useState(null); // resultado de Prototype
   const [errorReproduccion, setErrorReproduccion] = useState('');
   const [mostrarCatalogo, setMostrarCatalogo] = useState(false);
+  const [mostrarPatrones, setMostrarPatrones] = useState(false); // validación de patrones de comportamiento
   const [catalogo, setCatalogo] = useState(null); // árbol del Composite
   const [soloMiPerfil, setSoloMiPerfil] = useState(false);
   const [errorCatalogo, setErrorCatalogo] = useState('');
@@ -277,6 +279,13 @@ export default function Dashboard() {
     setReproduciendo(null);
   };
 
+  // Command (plan cambiado/deshecho desde el panel de patrones): se refleja en la sesión y en la tarjeta del plan.
+  const handleUsuarioActualizado = (actualizado) => {
+    const conToken = { ...actualizado, token: user?.token };
+    localStorage.setItem('cineverse_user', JSON.stringify(conToken));
+    setUser(conToken);
+  };
+
   const handleLogout = () => {
     if (user && reproduciendo) {
       api
@@ -356,6 +365,9 @@ export default function Dashboard() {
           >
             {mostrarCatalogo ? 'Ocultar catálogo' : 'Explorar catálogo'}
           </button>
+          <button className="btn-ghost" onClick={() => setMostrarPatrones((v) => !v)}>
+            {mostrarPatrones ? 'Ocultar validación de patrones' : '🧪 Validar patrones de comportamiento'}
+          </button>
           <button className="btn-ghost">Mi lista</button>
         </div>
 
@@ -373,6 +385,11 @@ export default function Dashboard() {
             Cambiar plan →
           </Link>
         </div>
+
+        {/* Validación de los patrones de comportamiento: Iterator, Mediator, Memento, Chain y Command */}
+        {mostrarPatrones && user && (
+          <PatronesComportamiento user={user} onUsuarioActualizado={handleUsuarioActualizado} />
+        )}
 
         {/* Resultado visible del Composite: árbol colección > serie > temporada > episodio */}
         {mostrarCatalogo && (

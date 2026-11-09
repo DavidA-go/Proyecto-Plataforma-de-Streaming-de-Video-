@@ -842,3 +842,248 @@ a {
   background: var(--gold-dim);
   border-color: var(--gold);
 }
+
+/* ============ Validación de patrones de comportamiento (Dashboard) ============ */
+.pc-panel {
+  margin-top: 24px;
+  max-width: 920px;
+  padding: 18px 22px 22px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(6px);
+  text-align: left;
+}
+
+.pc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.pc-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pc-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 9px 16px;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pc-tab:hover { color: var(--text); }
+
+.pc-tab-active {
+  color: var(--gold);
+  background: var(--bg-card);
+  border-color: var(--border);
+}
+
+.pc-tab-badge {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.pc-ok { color: #6fcf97; }
+.pc-fail { color: var(--danger); }
+
+.pc-summary { margin-top: 10px; }
+
+.pc-body {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  padding: 18px 20px 20px;
+}
+
+.pc-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.3rem;
+  color: var(--text);
+}
+
+.pc-where {
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  margin: 2px 0 8px;
+}
+
+.pc-idea {
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.pc-roles {
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  margin-top: 6px;
+}
+
+.pc-hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.pc-interactive {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pc-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.pc-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.pc-btn { padding: 8px 14px; font-size: 0.82rem; }
+.pc-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.pc-btn-verify { width: auto; padding: 9px 20px; font-size: 0.85rem; }
+
+.pc-select,
+.pc-input {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  padding: 8px 10px;
+}
+
+.pc-input { min-width: 180px; }
+
+.pc-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.pc-link {
+  background: none;
+  border: none;
+  color: var(--gold);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 8px;
+}
+.pc-link:hover { text-decoration: underline; }
+
+.pc-tree { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.pc-tree li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.85rem; }
+.pc-tree-title { color: var(--text); }
+
+.pc-state {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+}
+.pc-state li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.pc-state span { color: var(--text-faint); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.pc-state b { color: var(--text); font-size: 0.88rem; font-weight: 600; }
+
+.pc-log ul { list-style: none; display: flex; flex-direction: column; gap: 4px; margin-top: 6px; max-height: 220px; overflow-y: auto; }
+.pc-log li { color: var(--text-muted); font-size: 0.8rem; }
+.pc-log b { color: var(--text); }
+.pc-log small { color: var(--text-faint); margin-left: 4px; }
+.pc-log-n { color: var(--gold); font-weight: 700; margin-right: 6px; }
+.pc-log-origen { color: var(--text-muted); }
+
+.pc-result {
+  font-size: 0.88rem;
+  color: var(--text);
+  background: var(--gold-dim);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+}
+.pc-result.pc-ok { color: #6fcf97; background: rgba(111, 207, 151, 0.1); }
+.pc-result.pc-fail { color: var(--danger); background: rgba(225, 74, 74, 0.1); }
+
+.pc-chain { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; }
+.pc-chain-wrap { display: flex; align-items: center; gap: 6px; }
+.pc-chain-arrow { color: var(--text-faint); font-size: 1.1rem; }
+.pc-link-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  font-size: 0.8rem;
+}
+.pc-link-box b { color: var(--text); }
+.pc-link-OK { border-color: rgba(111, 207, 151, 0.6); }
+.pc-link-OK span { color: #6fcf97; }
+.pc-link-RECHAZADA { border-color: rgba(225, 74, 74, 0.7); background: rgba(225, 74, 74, 0.08); }
+.pc-link-RECHAZADA span { color: var(--danger); }
+.pc-link-OMITIDA { opacity: 0.55; border-style: dashed; }
+.pc-link-OMITIDA span { color: var(--text-faint); }
+
+.pc-verify {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.pc-verify-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+
+.pc-checks { margin-top: 12px; }
+.pc-checks-total { font-weight: 700; font-size: 0.9rem; margin-bottom: 8px; }
+.pc-checks ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.pc-checks li { display: flex; gap: 10px; font-size: 0.84rem; color: var(--text); line-height: 1.45; }
+.pc-checks li small { display: block; color: var(--text-faint); font-size: 0.76rem; word-break: break-word; }
+.pc-check-icon { font-weight: 700; width: 14px; flex-shrink: 0; }
+
+/* El hero limita el ancho de los <p>; dentro del panel de patrones usan todo el ancho. */
+.pc-panel p { max-width: none; }
+.pc-panel .pc-idea { color: var(--text); }
+.pc-panel .pc-hint { color: var(--text-muted); }

@@ -33,6 +33,18 @@ class CatalogoProxy extends ProxyProtegido {
     this.exigir('ver detalle de contenido', P.CATALOGO_VER);
     return this.real.detalle(id);
   }
+
+  /** Iterator: recorrido paginado del árbol (mismo permiso que ver el catálogo). */
+  recorrer(opciones) {
+    this.exigir('recorrer catálogo', P.CATALOGO_VER);
+    return this.real.recorrer(opciones);
+  }
+
+  /** Iterator: siguiente reproducible en el orden del catálogo. */
+  siguiente(id) {
+    this.exigir('obtener siguiente contenido', P.CATALOGO_VER);
+    return this.real.siguiente(id);
+  }
 }
 
 export default CatalogoProxy;

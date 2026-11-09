@@ -12,7 +12,12 @@
     "test:patrones": "node test-flyweight-proxy.js",
     "test:chain": "node test-chain.js",
     "demo:command": "node demo-command.js",
-    "test:command": "node test-command.js"
+    "test:command": "node test-command.js",
+    "demo:comportamiento": "node demo-comportamiento.js",
+    "test:comportamiento": "node test-comportamiento.js",
+    "test:iterator": "node test-comportamiento.js iterator",
+    "test:mediator": "node test-comportamiento.js mediator",
+    "test:memento": "node test-comportamiento.js memento"
   },
   "keywords": [],
   "author": "",

@@ -34,6 +34,14 @@ class ContenidoCompuesto extends ElementoContenido {
     return this;
   }
 
+  esReproducible() {
+    return false;
+  }
+
+  getHijos() {
+    return this.hijos;
+  }
+
   getDuracion() {
     return this.hijos.reduce((total, hijo) => total + hijo.getDuracion(), 0);
   }

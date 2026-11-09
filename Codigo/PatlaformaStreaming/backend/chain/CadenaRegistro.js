@@ -31,11 +31,18 @@ class CadenaRegistro {
     return primero;
   }
 
-  /** Valida una solicitud de registro. Devuelve { valido, regla?, message?, status?, solicitud }; solicitud.plan lo llena la cadena. */
+  /**
+   * Valida una solicitud de registro. Devuelve { valido, regla?, message?, status?, solicitud, eslabones }.
+   * solicitud.plan lo llena la cadena. `eslabones` es la traza: una entrada por cada regla de la
+   * cadena, con resultado OK | RECHAZADA | OMITIDA (la cadena se cortó antes de llegar a ella).
+   */
   static async validar(datos, opciones) {
     const solicitud = { ...datos };
-    const resultado = await CadenaRegistro.crear(opciones).manejar(solicitud);
-    return { ...resultado, solicitud };
+    const cadena = CadenaRegistro.crear(opciones);
+    const traza = [];
+    const resultado = await cadena.manejar(solicitud, traza);
+    const eslabones = cadena.reglas().map((regla) => traza.find((t) => t.regla === regla) || { regla, resultado: 'OMITIDA' });
+    return { ...resultado, solicitud, eslabones };
   }
 }
 

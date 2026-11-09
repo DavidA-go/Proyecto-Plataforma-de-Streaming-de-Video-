@@ -14,6 +14,7 @@ export const P = Object.freeze({
   CATALOGO_VER: 'catalogo:ver',
   // Recomendación
   RECOMENDACION_VER: 'recomendacion:ver',
+  RECOMENDACION_PERSONALIZAR: 'recomendacion:personalizar',
   // Streaming
   STREAMING_REPRODUCIR: 'streaming:reproducir',
   STREAMING_MANIFEST_BASICO: 'streaming:manifest-basico',

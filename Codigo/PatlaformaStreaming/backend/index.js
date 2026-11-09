@@ -70,6 +70,22 @@ app.get('/api/planes', ruta((req, res, s) => {
   res.status(200).json({ planes: s.suscripcion.listarPlanes() });
 }));
 
+// Chain of Responsibility (validación sin registrar): corre la MISMA cadena que /api/register
+// pero no crea ningún usuario. Devuelve por qué eslabón pasó la solicitud (OK / RECHAZADA / OMITIDA).
+// Es pública (igual que el registro) y nunca devuelve ni guarda la contraseña.
+app.post('/api/validar-registro', async (req, res) => {
+  const { username, email, password, confirmPassword, tipoPlan } = req.body;
+  try {
+    const { valido, regla, message, status, eslabones } = await CadenaRegistro.validar({
+      username, email, password, confirmPassword, tipoPlan,
+    });
+    res.status(200).json({ valido, regla: regla ?? null, message: message ?? null, status: status ?? 200, eslabones });
+  } catch (error) {
+    console.error('Error al validar registro:', error);
+    res.status(500).json({ message: 'Error interno del servidor.' });
+  }
+});
+
 // Ruta de Registro
 app.post('/api/register', async (req, res) => {
   const { username, email, password, confirmPassword, tipoPlan } = req.body;
@@ -221,10 +237,59 @@ app.post('/api/stream/entrega', ruta((req, res, s) => {
   res.status(200).json(s.streaming.generarEntrega(req.body));
 }));
 
+// Streaming adaptativo (Mediator): sesión de reproducción con sus piezas coordinadas.
+// El techo de calidad sale del PLAN del usuario (Factory Method); el contenido puede ser un grupo (Iterator elige el primero).
+app.post('/api/stream/sesion', ruta(async (req, res, s) => {
+  const plan = await s.suscripcion.obtenerPlan(req.usuario?.id); // sin sesión -> 401 (lo decide el proxy)
+  const r = s.streaming.crearSesion({
+    contenidoId: req.body.contenidoId,
+    anchoBandaKbps: req.body.anchoBandaKbps,
+    calidadMaxima: plan.calidadMaxima,
+  });
+  res.status(201).json({ message: 'Sesión de reproducción creada', ...r });
+}));
+
+app.get('/api/stream/sesion/:sesionId', ruta((req, res, s) => {
+  res.status(200).json(s.streaming.estadoSesion({ sesionId: req.params.sesionId }));
+}));
+
+// Cuerpo: { accion: 'reproducir'|'pausar'|'buscar'|'red'|'avanzar'|'audio'|'subtitulo', valor? }
+app.post('/api/stream/sesion/:sesionId/accion', ruta((req, res, s) => {
+  res.status(200).json(s.streaming.accionSesion({ sesionId: req.params.sesionId, accion: req.body.accion, valor: req.body.valor }));
+}));
+
+app.delete('/api/stream/sesion/:sesionId', ruta((req, res, s) => {
+  res.status(200).json(s.streaming.cerrarSesion({ sesionId: req.params.sesionId }));
+}));
+
 // Recomendación (Prototype).
 app.post('/api/recomendaciones/perfil', ruta((req, res, s) => {
   const perfil = s.recomendacion.generarPerfil(req.body);
   res.status(200).json({ message: 'Perfil de recomendación generado', perfil });
+}));
+
+// Perfil propio de recomendación con historial (Memento). Siempre es el del usuario autenticado.
+app.get('/api/recomendaciones/mi-perfil', ruta((req, res, s) => {
+  res.status(200).json(s.recomendacion.miPerfil());
+}));
+
+// Cuerpo: { categoriaBase?, generosAdicionales?, generosFavoritos?, tipoContenidoPreferido?, pesoHistorial? }
+app.put('/api/recomendaciones/mi-perfil', ruta((req, res, s) => {
+  const r = s.recomendacion.guardarMiPerfil(req.body);
+  res.status(r.creado ? 201 : 200).json({ message: r.creado ? 'Perfil creado' : r.sinCambios ? 'Sin cambios' : 'Perfil actualizado', ...r });
+}));
+
+app.post('/api/recomendaciones/mi-perfil/deshacer', ruta((req, res, s) => {
+  res.status(200).json({ message: 'Cambio deshecho', ...s.recomendacion.deshacerMiPerfil() });
+}));
+
+app.post('/api/recomendaciones/mi-perfil/rehacer', ruta((req, res, s) => {
+  res.status(200).json({ message: 'Cambio rehecho', ...s.recomendacion.rehacerMiPerfil() });
+}));
+
+// Cuerpo: { version } (número de la lista "historial" de GET /mi-perfil)
+app.post('/api/recomendaciones/mi-perfil/restaurar', ruta((req, res, s) => {
+  res.status(200).json({ message: 'Versión restaurada', ...s.recomendacion.restaurarMiPerfil({ version: req.body.version }) });
 }));
 
 // Catálogo (Composite). Filtros: ?generos=accion,thriller  |  ?perfil=familiar
@@ -234,6 +299,18 @@ app.get('/api/catalogo', ruta((req, res, s) => {
 
 app.get('/api/catalogo/:id', ruta((req, res, s) => {
   res.status(200).json(s.catalogo.detalle(req.params.id));
+}));
+
+// Catálogo (Iterator). Recorre el árbol desde el nodo :id (use "catalogo" para todo), de forma paginada.
+//   ?orden=profundidad|anchura|reproducibles  &genero=thriller  &tipo=episodio  &desde=0  &limite=20
+app.get('/api/catalogo/:id/recorrer', ruta((req, res, s) => {
+  const { orden, genero, tipo, desde, limite } = req.query;
+  res.status(200).json(s.catalogo.recorrer({ id: req.params.id, orden, genero, tipo, desde, limite }));
+}));
+
+// Catálogo (Iterator). Siguiente reproducible después de :id en el orden del catálogo (autoplay).
+app.get('/api/catalogo/:id/siguiente', ruta((req, res, s) => {
+  res.status(200).json(s.catalogo.siguiente(req.params.id));
 }));
 
 // ------------------------------------------------------------------
