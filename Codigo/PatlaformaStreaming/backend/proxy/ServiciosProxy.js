@@ -14,6 +14,7 @@ import AccesoLog from './AccesoLog.js';
 import RolFlyweightFactory from '../flyweight/RolFlyweightFactory.js';
 import CalidadVideoFactory from '../flyweight/CalidadVideoFactory.js';
 import ProxyProtegido from './ProxyProtegido.js';
+import { crearSujetoPlan } from '../subscription/observer/registrarObservadores.js'; // Observer: suscribe a DRM, Streaming y notificaciones
 import { P } from '../flyweight/Permisos.js';
 
 /**
@@ -35,7 +36,7 @@ const reales = {
   recomendacion: new RecomendacionServicio(),
   streaming: new StreamingServicio(),
   drm: new DRMServicio(),
-  suscripcion: new SuscripcionServicio(),
+  suscripcion: new SuscripcionServicio({ sujeto: crearSujetoPlan() }), // Observer: el sujeto ya trae sus observadores
   usuarios: new UsuarioServicio(),
 };
 

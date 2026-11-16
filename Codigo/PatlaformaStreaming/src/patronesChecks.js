@@ -10,7 +10,7 @@ import api from './api';
  * y NUNCA lanza: si algo falla (red, 500…) lo devuelve como una
  * comprobación fallida para que el Dashboard lo muestre.
  *
- * Las que modifican datos (Memento, Command) dejan todo como estaba.
+ * Las que modifican datos (Memento, Command, Observer) dejan todo como estaba.
  * ------------------------------------------------------------------
  */
 
@@ -263,10 +263,158 @@ export const verificarCommand = protegido('Command', async (chk, { user, onUsuar
   onUsuarioActualizado?.(final);
 });
 
+// ------------------------------------------------------------------
+// OBSERVER (suscripciones → DRM, Streaming, notificaciones)
+// Cambia el plan del usuario y lo deja como estaba (deshace cada cambio).
+// ------------------------------------------------------------------
+export const verificarObserver = protegido('Observer', async (chk, { user, onUsuarioActualizado }) => {
+  const EV = `/api/usuarios/${user.id}/plan/eventos`;
+  const original = user.planTipo;
+  const cambiar = (tipoPlan) => api.put(`/api/usuarios/${user.id}/plan`, { tipoPlan }).then((r) => r.data);
+  // "detener" con una sesión inexistente no libera nada: solo informa cuántas pantallas hay en uso.
+  const pantallasEnUso = () => api.post('/api/stream/detener', { sesionId: 'SES-verificacion' }).then((r) => r.data.pantallasEnUso);
+
+  const inicial = await get(EV);
+  chk(
+    'Hay 3 observadores suscritos al sujeto (DRM, Streaming y notificación)',
+    ['ObservadorPlanDRM', 'ObservadorPlanStreaming', 'ObservadorNotificacion'].every((n) => inicial.observadores.includes(n)),
+    inicial.observadores.join(', ')
+  );
+
+  let cambios = 0;
+  const sesionesDRM = [];
+  let sesionStreaming = null;
+  try {
+    if (original !== 'familiar') {
+      await cambiar('familiar'); // 4 pantallas y techo 1080p
+      cambios++;
+    }
+    for (const dispositivoId of ['verificacion-a', 'verificacion-b']) {
+      const lic = await api.post('/api/stream/autorizar', { contenidoId: 'ambar', dispositivoId, pais: 'CO' });
+      sesionesDRM.push(lic.data.licencia.sesionId);
+    }
+    const antes = await pantallasEnUso();
+    const ses = await api.post('/api/stream/sesion', { contenidoId: 'ambar', anchoBandaKbps: 50000 });
+    sesionStreaming = ses.data.sesionId;
+    chk('Punto de partida: ≥ 2 pantallas DRM abiertas y una sesión de streaming en 1080p', antes >= 2 && ses.data.estado.calidad.actual === '1080p', `${antes} pantalla(s) · ${ses.data.estado.calidad.actual}`);
+
+    const n0 = (await get(EV)).eventos.length;
+    await cambiar('free');
+    cambios++;
+    const { eventos } = await get(EV);
+    const ultimo = eventos.at(-1);
+    chk('Un solo cambio de plan genera UN evento PLAN_CAMBIADO (familiar → free)', eventos.length === n0 + 1 && ultimo?.tipo === 'PLAN_CAMBIADO' && ultimo.planAnterior === 'familiar' && ultimo.planNuevo === 'free', `${ultimo?.planAnterior} → ${ultimo?.planNuevo}`);
+    chk('Los 3 observadores recibieron el evento y terminaron OK', ultimo.traza.length === 3 && ultimo.traza.every((t) => t.estado === 'OK'), ultimo.traza.map((t) => `${t.observador.replace('Observador', '')}:${t.estado}`).join(' · '));
+
+    const despues = await pantallasEnUso();
+    chk('DRM reaccionó: se liberaron las pantallas que el plan free ya no permite (queda 1)', despues === 1 && despues < antes, `${antes} → ${despues} pantalla(s)`);
+
+    const e = (await get(`/api/stream/sesion/${sesionStreaming}`)).estado;
+    chk('Streaming reaccionó: la sesión abierta bajó a 480p (techo y calidad)', e.calidad.techoPlan === '480p' && e.calidad.actual === '480p', `techo ${e.calidad.techoPlan} · calidad ${e.calidad.actual}`);
+    chk('La notificación al usuario quedó en la traza', /Aviso enviado/.test(ultimo.traza[2]?.detalle ?? ''), ultimo.traza[2]?.detalle);
+
+    const invalido = await estadoHttp(() => cambiar('platino'));
+    chk('Un cambio inválido (plan inexistente → 400) no notifica a nadie', invalido === 400 && (await get(EV)).eventos.length === n0 + 1);
+  } finally {
+    for (const id of sesionesDRM) await api.post('/api/stream/detener', { sesionId: id }).catch(() => {});
+    if (sesionStreaming) await api.delete(`/api/stream/sesion/${sesionStreaming}`).catch(() => {});
+    let final = null;
+    for (let i = 0; i < cambios; i++) final = (await api.post(`/api/usuarios/${user.id}/plan/deshacer`)).data.user; // vuelve al plan original (también notifica)
+    if (final) onUsuarioActualizado?.(final);
+  }
+});
+
+// ------------------------------------------------------------------
+// STATE (streaming adaptativo: estado del reproductor)
+// ------------------------------------------------------------------
+export const verificarState = protegido('State', async (chk) => {
+  const crear = await api.post('/api/stream/sesion', { contenidoId: 'ambar', anchoBandaKbps: 50000 });
+  const id = crear.data.sesionId;
+  const accion = (a, valor) => api.post(`/api/stream/sesion/${id}/accion`, { accion: a, valor }).then((r) => r.data);
+  const estadoDe = (r) => r.estado.reproduccion.estado;
+  const nombres = (r) => r.eventos.map((e) => e.evento);
+  const cambio = (r) => r.eventos.filter((e) => e.evento === 'ESTADO_CAMBIO').map((e) => `${e.datos.de}→${e.datos.a}`).join(', ');
+
+  try {
+    chk('La sesión nace "detenido" y solo admite reproducir y buscar', crear.data.estado.reproduccion.estado === 'detenido' && crear.data.estado.reproduccion.accionesPermitidas.join() === 'reproducir,buscar', crear.data.estado.reproduccion.accionesPermitidas.join(', '));
+
+    const pausar = await accion('pausar');
+    chk('PAUSAR con el video detenido se IGNORA y queda anotado (sigue "detenido")', estadoDe(pausar) === 'detenido' && nombres(pausar).includes('TRANSICION_IGNORADA'), nombres(pausar).join(', '));
+
+    const play = await accion('reproducir');
+    chk('REPRODUCIR con el buffer vacío: detenido → cargando', estadoDe(play) === 'cargando' && cambio(play) === 'detenido→cargando', cambio(play));
+    chk('REPRODUCIR otra vez mientras carga se ignora', nombres(await accion('reproducir')).includes('TRANSICION_IGNORADA'));
+
+    const t = await accion('avanzar', 10);
+    chk('Al llenarse el buffer: cargando → reproduciendo (solo, el usuario no hizo nada)', estadoDe(t) === 'reproduciendo' && cambio(t) === 'cargando→reproduciendo', cambio(t));
+
+    const pausa = await accion('pausar');
+    const pos = pausa.estado.reproduccion.posicionSeg;
+    const quieto = await accion('avanzar', 5);
+    chk('En "pausado" el tiempo no avanza y NO reanuda solo, aunque el buffer se llene', estadoDe(pausa) === 'pausado' && quieto.estado.reproduccion.posicionSeg === pos && estadoDe(quieto) === 'pausado', `posición ${pos}s · buffer ${quieto.estado.buffer.segundos}s`);
+
+    const reanuda = await accion('reproducir');
+    chk('REPRODUCIR en pausa con buffer lleno: pausado → reproduciendo, sin pasar por "cargando"', estadoDe(reanuda) === 'reproduciendo' && cambio(reanuda) === 'pausado→reproduciendo', cambio(reanuda));
+
+    const salto = await accion('buscar', 8035);
+    chk('Buscar vacía el buffer y el estado pasa a "cargando"', estadoDe(salto) === 'cargando' && cambio(salto) === 'reproduciendo→cargando', cambio(salto));
+
+    const fin = await accion('avanzar', 30);
+    chk('Al terminar el contenido: reproduciendo → detenido', estadoDe(fin) === 'detenido' && fin.estado.reproduccion.accionesPermitidas.includes('reproducir'), cambio(fin));
+
+    const otra = await accion('reproducir');
+    chk('PLAY con el video terminado lo reinicia (posición 0, buffer vacío, "cargando")', otra.estado.reproduccion.posicionSeg === 0 && otra.estado.buffer.segundos === 0 && estadoDe(otra) === 'cargando', `pos ${otra.estado.reproduccion.posicionSeg}s · buffer ${otra.estado.buffer.segundos}s`);
+  } finally {
+    await api.delete(`/api/stream/sesion/${id}`).catch(() => {});
+  }
+});
+
+// ------------------------------------------------------------------
+// VISITOR (gestión de contenido: reportes sobre el catálogo Composite)
+// ------------------------------------------------------------------
+export const verificarVisitor = protegido('Visitor', async (chk) => {
+  const reporte = (raiz, visitante, extra = {}) => get(`/api/catalogo/${raiz}/reporte`, { params: { visitante, ...extra } });
+
+  const est = await reporte('catalogo', 'estadisticas');
+  const detalle = await get('/api/catalogo/catalogo');
+  chk('Estadísticas: la duración total coincide con la que calcula el Composite', est.duracionTotalMin === detalle.resumen.duracionMin, `${est.duracionTotalMin} min`);
+  chk('Estadísticas: los reproducibles coinciden con los del Composite', est.reproducibles === detalle.resumen.totalReproducibles, `${est.reproducibles} reproducibles`);
+
+  const todos = [];
+  let desde = 0;
+  while (desde !== null) {
+    const p = await get('/api/catalogo/catalogo/recorrer', { params: { orden: 'profundidad', limite: 100, desde } });
+    todos.push(...p.elementos);
+    desde = p.siguiente;
+  }
+  chk('Visitor + Iterator: el visitante visita los mismos nodos que recorre el iterador', est.nodosVisitados === todos.length, `${est.nodosVisitados} nodos`);
+  chk('Los conteos por tipo suman todos los nodos', Object.values(est.porTipo).reduce((a, b) => a + b, 0) === est.nodosVisitados, JSON.stringify(est.porTipo));
+
+  const serie = await reporte('horizonte-nocturno', 'estadisticas');
+  chk('Una serie: 1 serie, 2 temporadas, 8 episodios y 416 min', serie.porTipo.serie === 1 && serie.porTipo.temporada === 2 && serie.porTipo.episodio === 8 && serie.duracionTotalMin === 416, `${serie.duracionTexto}`);
+
+  const alm = await reporte('catalogo', 'almacenamiento');
+  const r = alm.calidades['1080p'].gb / alm.calidades['360p'].gb;
+  chk('Almacenamiento usa los bitrates del Flyweight: 1080p pesa 6,25× más que 360p', Math.abs(r - 6.25) < 0.01, `${alm.calidades['360p'].gb} GB → ${alm.calidades['1080p'].gb} GB`);
+  const soloDos = await reporte('catalogo', 'almacenamiento', { calidades: '720p,1080p' });
+  chk('Se pueden elegir las calidades a estimar', Object.keys(soloDos.calidades).join() === '720p,1080p', Object.keys(soloDos.calidades).join(', '));
+
+  const csv = await reporte('horizonte-nocturno', 'csv');
+  chk('CSV: una fila por nodo (11) con su cabecera', csv.filas === 11 && csv.csv.startsWith('nivel,tipo,id,titulo,duracionMin,generos') && csv.csv.split('\n').length === 12, `${csv.filas} filas`);
+  chk('Los 3 visitantes recorren exactamente los mismos nodos', est.nodosVisitados === alm.nodosVisitados && alm.nodosVisitados === (await reporte('catalogo', 'csv')).nodosVisitados);
+
+  chk('Nodo inexistente → 404', (await estadoHttp(() => reporte('no-existe', 'estadisticas'))) === 404);
+  chk('Visitante inexistente → 400', (await estadoHttp(() => reporte('catalogo', 'xml'))) === 400);
+  chk('Calidad inexistente → 400', (await estadoHttp(() => reporte('catalogo', 'almacenamiento', { calidades: '7p' }))) === 400);
+});
+
 export const VERIFICACIONES = {
   iterator: verificarIterator,
   mediator: verificarMediator,
   memento: verificarMemento,
   chain: verificarChain,
   command: verificarCommand,
+  observer: verificarObserver,
+  state: verificarState,
+  visitor: verificarVisitor,
 };

@@ -32,6 +32,13 @@ class RegistroSesiones {
     return RegistroSesiones.obtener(id, usuarioId) ? RegistroSesiones.#sesiones.delete(String(id)) : false;
   }
 
+  /** Todas las sesiones abiertas de un usuario (las usa el observador del plan). */
+  static delUsuario(usuarioId) {
+    return [...RegistroSesiones.#sesiones.values()]
+      .filter((e) => e.usuarioId === String(usuarioId))
+      .map((e) => e.sesion);
+  }
+
   static total() {
     return RegistroSesiones.#sesiones.size;
   }

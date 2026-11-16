@@ -18,6 +18,10 @@ class Pelicula extends ElementoContenido {
     return this.duracionMin;
   }
 
+  aceptar(visitante) {
+    return visitante.visitarPelicula(this); // Visitor
+  }
+
   // Una hoja es reproducible por sí misma: se devuelve a sí misma.
 obtenerReproducibles() {
   console.log(`🌳 [Composite:hoja] ${this.tipo()} "${this.titulo}" se devuelve a sí mismo`);

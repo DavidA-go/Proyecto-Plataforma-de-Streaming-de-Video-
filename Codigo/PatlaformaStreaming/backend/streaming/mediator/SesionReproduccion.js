@@ -21,12 +21,14 @@ const MAX_BITACORA = 200;
  *  RED_CAMBIO          -> adaptar calidad (baja de inmediato; sube solo con buffer >= 10 s;
  *                         si la subida se pospone, se reintenta sola al avanzar el tiempo)
  *  BUFFER_BAJO         -> bajar un escalón de calidad (red de seguridad si la medición de red no avisó)
- *  BUFFER_VACIO        -> si estaba reproduciendo, pasar a "cargando"
- *  BUFFER_RECUPERADO   -> si el usuario quería reproducir, reanudar; re-evaluar calidad
- *  REPRODUCIR          -> reproduce si hay buffer suficiente; si no, "cargando"
- *  PAUSA               -> pausado (el buffer sigue llenándose)
+ *  BUFFER_VACIO        -> (State) si estaba reproduciendo, pasar a "cargando"
+ *  BUFFER_RECUPERADO   -> (State) si el usuario quería reproducir, reanudar; re-evaluar calidad
+ *  REPRODUCIR          -> (State) reproduce si hay buffer suficiente; si no, "cargando"; ignorado si ya reproduce;
+ *                         si el video había terminado, primero se reinicia (salto al segundo 0)
+ *  PAUSA               -> (State) pausado (el buffer sigue llenándose); ignorado si no hay nada que pausar
  *  BUSCAR              -> mover posición, vaciar buffer y arrancar en la calidad más baja (inicio rápido)
  *  PISTA_CAMBIO        -> un cambio de audio descarta el audio ya descargado (recorta el buffer)
+ *  TECHO_CAMBIO        -> (Observer) el plan cambió: bajar de inmediato si la calidad actual ya no se permite
  *  FIN_CONTENIDO       -> detener
  * ------------------------------------------------------------------
  */
@@ -72,43 +74,59 @@ class SesionReproduccion extends MediadorReproduccion {
         this.calidad.bajarUnNivel('buffer bajo');
         break;
 
+      // STATE: el mediador decide CUÁNDO; el estado actual del control decide QUÉ significa y a dónde pasa.
       case 'BUFFER_VACIO':
-        if (this.control.estado === 'reproduciendo') this.control.establecerEstado('cargando');
+        this.control.ordenarBufferVacio();
         break;
 
       case 'BUFFER_RECUPERADO':
-        if (this.control.quiereReproducir && this.control.estado === 'cargando') this.control.establecerEstado('reproduciendo');
+        this.control.ordenarBufferRecuperado();
         this.#adaptarCalidad('buffer recuperado');
         break;
 
       case 'REPRODUCIR':
-        this.control.quiereReproducir = true;
-        this.control.establecerEstado(this.buffer.segundos >= this.buffer.umbralRecuperado ? 'reproduciendo' : 'cargando');
+        // Video terminado: volver a darle play es empezar de nuevo = saltar al segundo 0 (mismo trato que BUSCAR).
+        if (this.control.posicionSeg >= this.control.duracionSeg) this.#saltarA(0, 'inicio rápido tras reiniciar');
+        // El control no conoce al buffer: el mediador le dice si alcanza para empezar.
+        this.control.ordenarReproducir({ bufferSuficiente: this.buffer.segundos >= this.buffer.umbralRecuperado });
         break;
 
       case 'PAUSA':
-        this.control.quiereReproducir = false;
-        this.control.establecerEstado('pausado');
+        this.control.ordenarPausa();
         break;
 
       case 'BUSCAR':
-        this.control.moverA(datos.segundo);
-        this.buffer.vaciar(); // lo descargado ya no sirve en otra posición
-        this.calidad.aplicar(SelectorCalidad.ESCALERA[0], 'inicio rápido tras saltar'); // la ABR vuelve a subir sola
+        this.#saltarA(datos.segundo, 'inicio rápido tras saltar');
         break;
 
       case 'PISTA_CAMBIO':
         if (datos.tipo === 'audio') this.buffer.recortarA(BUFFER_TRAS_CAMBIO_AUDIO);
         break;
 
+      case 'TECHO_CAMBIO': // el usuario cambió de plan (lo avisa el Observer de suscripciones)
+        if (SelectorCalidad.indice(this.calidad.actual) > SelectorCalidad.indice(this.calidad.techo)) {
+          this.#subidaPendiente = false;
+          this.#subidaPospuesta = false;
+          this.calidad.aplicar(this.calidad.techo, 'el plan ya no permite esa calidad'); // baja al instante
+        } else {
+          this.#adaptarCalidad('el plan permite más calidad'); // sube solo con las reglas de siempre (escalón + buffer)
+        }
+        break;
+
       case 'FIN_CONTENIDO':
-        this.control.quiereReproducir = false;
-        this.control.establecerEstado('detenido');
+        this.control.ordenarFin();
         break;
 
       default:
         break; // CALIDAD_CAMBIO y demás: solo quedan en la bitácora
     }
+  }
+
+  /** Cambiar de posición: lo descargado ya no sirve y se arranca en la calidad más baja (la ABR vuelve a subir sola). */
+  #saltarA(segundo, motivo) {
+    this.control.moverA(segundo);
+    this.buffer.vaciar();
+    this.calidad.aplicar(SelectorCalidad.ESCALERA[0], motivo);
   }
 
   /**
@@ -152,6 +170,14 @@ class SesionReproduccion extends MediadorReproduccion {
   cambiarAudio(idioma) { this.pistas.solicitarAudio(idioma); }
   cambiarSubtitulo(idioma) { this.pistas.solicitarSubtitulo(idioma); }
 
+  /** Observer: el plan del usuario cambió. Devuelve lo que pasó con el techo y con la calidad. */
+  cambiarTecho(techo) {
+    const techoAnterior = this.calidad.techo;
+    const calidadAnterior = this.calidad.actual;
+    this.calidad.cambiarTecho(techo);
+    return { techoAnterior, techoNuevo: this.calidad.techo, calidadAnterior, calidadNueva: this.calidad.actual };
+  }
+
   /**
    * Simula el paso de `segundos` de tiempo real: la red descarga video
    * (siempre, incluso en pausa, hasta llenar el buffer) y, si se está
@@ -163,7 +189,7 @@ class SesionReproduccion extends MediadorReproduccion {
     for (let i = 0; i < Math.ceil(segundos); i++) {
       const paso = Math.min(1, segundos - i);
       this.buffer.llenar((paso * this.red.anchoBandaKbps) / this.calidad.bitrateKbps);
-      if (this.control.estado === 'reproduciendo') {
+      if (this.control.estaReproduciendo) { // State: solo el estado "reproduciendo" consume buffer
         const consumido = Math.min(paso, this.buffer.segundos);
         this.buffer.consumir(consumido);
         this.control.avanzar(consumido);
@@ -192,7 +218,7 @@ class SesionReproduccion extends MediadorReproduccion {
   estado() {
     return {
       contenido: this.contenido,
-      reproduccion: { estado: this.control.estado, posicionSeg: Math.round(this.control.posicionSeg * 10) / 10, duracionSeg: this.control.duracionSeg },
+      reproduccion: { estado: this.control.estado, accionesPermitidas: this.control.accionesPermitidas(), posicionSeg: Math.round(this.control.posicionSeg * 10) / 10, duracionSeg: this.control.duracionSeg },
       calidad: { actual: this.calidad.actual, techoPlan: this.calidad.techo, bitrateKbps: this.calidad.bitrateKbps },
       red: { anchoBandaKbps: this.red.anchoBandaKbps },
       buffer: { segundos: Math.round(this.buffer.segundos * 10) / 10, nivel: this.buffer.nivel },

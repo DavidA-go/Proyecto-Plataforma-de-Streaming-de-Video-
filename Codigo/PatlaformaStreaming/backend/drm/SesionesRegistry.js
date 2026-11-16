@@ -50,6 +50,19 @@ class SesionesRegistry {
     return sesion;
   }
 
+  /**
+   * Recorta las pantallas en uso a `maximo`, liberando las sesiones MÁS ANTIGUAS.
+   * Lo usa el observador del plan DRM cuando el usuario baja de plan.
+   * Devuelve las sesiones liberadas (arreglo vacío si no sobraba ninguna).
+   */
+  static limitar(usuarioId, maximo) {
+    const vigentes = SesionesRegistry.#limpiarExpiradas(usuarioId); // orden de apertura: la más antigua primero
+    const sobran = Math.max(0, vigentes.length - Math.max(0, maximo));
+    if (sobran === 0) return [];
+    SesionesRegistry.sesiones.set(usuarioId, vigentes.slice(sobran));
+    return vigentes.slice(0, sobran);
+  }
+
   static liberar(usuarioId, sesionId) {
     const antes = SesionesRegistry.#limpiarExpiradas(usuarioId);
     const despues = antes.filter((s) => s.id !== sesionId);

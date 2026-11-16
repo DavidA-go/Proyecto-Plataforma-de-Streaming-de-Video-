@@ -15,7 +15,9 @@
     "test:patrones": "node backend/test-flyweight-proxy.js",
     "test:chain": "node backend/test-chain.js",
     "test:comportamiento": "node backend/test-comportamiento.js",
-    "demo:comportamiento": "node backend/demo-comportamiento.js"
+    "demo:comportamiento": "node backend/demo-comportamiento.js",
+    "demo:observer-state-visitor": "node backend/demo-observer-state-visitor.js",
+    "test:observer-state-visitor": "node backend/test-observer-state-visitor.js"
   },
   "dependencies": {
     "axios": "^1.20.0",

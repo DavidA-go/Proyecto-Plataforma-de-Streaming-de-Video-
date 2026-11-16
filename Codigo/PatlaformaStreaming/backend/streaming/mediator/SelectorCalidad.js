@@ -49,6 +49,16 @@ class SelectorCalidad extends ComponenteReproductor {
     return true;
   }
 
+  /** Cambia el techo que permite el plan y avisa (el mediador decide qué hacer con la calidad actual). */
+  cambiarTecho(nuevoTecho) {
+    if (!ESCALERA.includes(nuevoTecho)) throw new Error(`Techo de calidad inválido: "${nuevoTecho}".`);
+    if (nuevoTecho === this.techo) return false;
+    const de = this.techo;
+    this.techo = nuevoTecho;
+    this.emitir('TECHO_CAMBIO', { de, a: nuevoTecho });
+    return true;
+  }
+
   /** Baja un escalón (si puede). */
   bajarUnNivel(motivo) {
     const i = SelectorCalidad.indice(this.actual);

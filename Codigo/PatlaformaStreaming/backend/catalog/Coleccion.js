@@ -8,6 +8,10 @@ class Coleccion extends ContenidoCompuesto {
   tipo() {
     return 'coleccion';
   }
+
+  aceptar(visitante) {
+    return visitante.visitarColeccion(this); // Visitor
+  }
 }
 
 export default Coleccion;

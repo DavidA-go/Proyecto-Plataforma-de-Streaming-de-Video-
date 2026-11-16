@@ -17,7 +17,12 @@
     "test:comportamiento": "node test-comportamiento.js",
     "test:iterator": "node test-comportamiento.js iterator",
     "test:mediator": "node test-comportamiento.js mediator",
-    "test:memento": "node test-comportamiento.js memento"
+    "test:memento": "node test-comportamiento.js memento",
+    "demo:observer-state-visitor": "node demo-observer-state-visitor.js",
+    "test:observer-state-visitor": "node test-observer-state-visitor.js",
+    "test:observer": "node test-observer-state-visitor.js observer",
+    "test:state": "node test-observer-state-visitor.js state",
+    "test:visitor": "node test-observer-state-visitor.js visitor"
   },
   "keywords": [],
   "author": "",

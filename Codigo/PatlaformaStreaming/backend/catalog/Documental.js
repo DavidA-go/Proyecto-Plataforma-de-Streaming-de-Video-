@@ -9,6 +9,10 @@ class Documental extends Pelicula {
   tipo() {
     return 'documental';
   }
+
+  aceptar(visitante) {
+    return visitante.visitarDocumental(this); // Visitor
+  }
 }
 
 export default Documental;

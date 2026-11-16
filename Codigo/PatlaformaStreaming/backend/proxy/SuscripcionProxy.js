@@ -22,6 +22,12 @@ class SuscripcionProxy extends ProxyProtegido {
     return this.real.obtenerPlan(usuarioId);
   }
 
+  /** Observer: ver qué pasó tras los cambios de plan. Mismos permisos que consultar el plan. */
+  eventosPlan(usuarioId) {
+    this.exigirPropioOAjeno('consultar eventos del plan', usuarioId, P.PLAN_CAMBIAR_PROPIO, P.PLAN_CAMBIAR_AJENO);
+    return this.real.eventosPlan(usuarioId);
+  }
+
   cambiarPlan(usuarioId, tipoPlan) {
     this.exigirPropioOAjeno('cambiar plan', usuarioId, P.PLAN_CAMBIAR_PROPIO, P.PLAN_CAMBIAR_AJENO);
     return this.real.cambiarPlan(usuarioId, tipoPlan);

@@ -19,6 +19,10 @@ class Episodio extends ElementoContenido {
     return this.duracionMin;
   }
 
+  aceptar(visitante) {
+    return visitante.visitarEpisodio(this); // Visitor
+  }
+
   obtenerReproducibles() {
   console.log(`🌳 [Composite:hoja] ${this.tipo()} "${this.titulo}" se devuelve a sí mismo`);
   return [this];

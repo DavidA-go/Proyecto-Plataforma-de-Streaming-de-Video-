@@ -8,6 +8,10 @@ class Serie extends ContenidoCompuesto {
   tipo() {
     return 'serie';
   }
+
+  aceptar(visitante) {
+    return visitante.visitarSerie(this); // Visitor
+  }
 }
 
 export default Serie;

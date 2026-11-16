@@ -4,7 +4,7 @@ import { VERIFICACIONES } from '../patronesChecks';
 
 // ------------------------------------------------------------------
 // Panel "Validación de patrones de comportamiento" del Dashboard.
-// Una pestaña por patrón (Iterator, Mediator, Memento, Chain, Command).
+// Una pestaña por patrón (Iterator, Mediator, Memento, Chain, Command, Observer, State, Visitor).
 // Cada pestaña tiene:
 //   1) una prueba INTERACTIVA que llama a los endpoints reales, y
 //   2) una VERIFICACIÓN AUTOMÁTICA (patronesChecks.js) que ejecuta un
@@ -46,6 +46,27 @@ const PATRONES = [
     donde: 'Suscripciones · commands/',
     idea: 'Cambiar de plan es un objeto (CambiarPlanCommand) que recuerda el plan anterior; el invocador lo guarda en el historial del usuario y puede deshacerlo.',
     roles: 'Command: Command · Concreto: CambiarPlanCommand · Invoker: CommandInvoker · Receiver: SuscripcionServicio',
+  },
+  {
+    id: 'observer',
+    nombre: 'Observer',
+    donde: 'Suscripciones → DRM y Streaming · subscription/observer',
+    idea: 'Cambiar de plan avisa a quien esté suscrito: DRM libera las pantallas que el plan nuevo ya no permite, Streaming ajusta el techo de calidad de las sesiones abiertas y el usuario recibe un aviso. La suscripción no conoce a ningún observador.',
+    roles: 'Subject: SujetoPlan (en SuscripcionServicio) · Observer: Observador · Concretos: ObservadorPlanDRM, ObservadorPlanStreaming, ObservadorNotificacion',
+  },
+  {
+    id: 'state',
+    nombre: 'State',
+    donde: 'Streaming adaptativo · streaming/state',
+    idea: 'El estado del reproductor (detenido, cargando, reproduciendo, pausado) son objetos que deciden qué hacer ante cada evento y a qué estado pasar. Lo que el estado no admite (pausar un video detenido) se ignora y queda anotado.',
+    roles: 'Context: ControlReproduccion · State: EstadoReproduccion · Concretos: EstadoDetenido, EstadoCargando, EstadoReproduciendo, EstadoPausado',
+  },
+  {
+    id: 'visitor',
+    nombre: 'Visitor',
+    donde: 'Gestión de contenido · catalog/visitor',
+    idea: 'Reportes sobre el árbol del catálogo (estadísticas, espacio en disco, CSV) sin tocar las clases de los nodos: cada nodo solo acepta al visitante y este decide qué hacer según el tipo (doble despacho).',
+    roles: 'Visitor: VisitanteContenido · Concretos: VisitanteEstadisticas, VisitanteAlmacenamiento, VisitanteExportadorCSV · Element: ElementoContenido.aceptar()',
   },
 ];
 
@@ -550,6 +571,249 @@ function PruebaCommand({ user, onUsuarioActualizado }) {
   );
 }
 
+// ---------- OBSERVER ----------
+
+function PruebaObserver({ user, onUsuarioActualizado }) {
+  const [planes, setPlanes] = useState([]);
+  const [info, setInfo] = useState(null); // { observadores, eventos }
+  const [mensaje, setMensaje] = useState('');
+  const [error, setError] = useState('');
+  const EV = `/api/usuarios/${user.id}/plan/eventos`;
+
+  const cargar = useCallback(async () => {
+    try {
+      const [p, e] = await Promise.all([api.get('/api/planes'), api.get(EV)]);
+      setPlanes(p.data.planes);
+      setInfo(e.data);
+      setError('');
+    } catch (e) {
+      setError(errorDe(e));
+    }
+  }, [EV]);
+
+  const cambiar = async (tipoPlan) => {
+    try {
+      const { data } = await api.put(`/api/usuarios/${user.id}/plan`, { tipoPlan });
+      onUsuarioActualizado(data.user);
+      setMensaje(`Plan → ${tipoPlan}. Mira abajo qué hizo cada observador.`);
+      await cargar();
+    } catch (e) {
+      setError(errorDe(e));
+    }
+  };
+
+  const deshacer = async () => {
+    try {
+      const { data } = await api.post(`/api/usuarios/${user.id}/plan/deshacer`);
+      onUsuarioActualizado(data.user);
+      setMensaje(`Deshecho: el plan volvió a "${data.user.planTipo}" (el deshacer también notifica).`);
+      await cargar();
+    } catch (e) {
+      setError(errorDe(e));
+    }
+  };
+
+  return (
+    <div className="pc-interactive">
+      <p className="pc-hint">Plan actual: <b>{user.planTipo}</b>. Estos botones cambian tu plan de verdad (se puede deshacer).</p>
+      <div className="pc-controls">
+        <Boton onClick={cargar}>Ver observadores y eventos</Boton>
+        {planes.map((p) => (
+          <Boton key={p.tipo} disabled={p.tipo === user.planTipo} onClick={() => cambiar(p.tipo)}>→ {p.tipo}</Boton>
+        ))}
+        <Boton onClick={deshacer}>↩ Deshacer último cambio</Boton>
+      </div>
+      {error && <div className="alert-error">{error}</div>}
+      {mensaje && <p className="pc-result">{mensaje}</p>}
+      {info && (
+        <>
+          <p className="pc-hint">Observadores suscritos: <b>{info.observadores.join(' · ')}</b></p>
+          <div className="pc-log">
+            <p className="pc-hint">Notificaciones de tus cambios de plan ({info.eventos.length}), la más reciente primero:</p>
+            {info.eventos.length === 0 && <p className="pc-hint">Aún no hay: cambia de plan para disparar el evento.</p>}
+            {[...info.eventos].reverse().map((ev) => (
+              <div key={ev.n} className="pc-evento">
+                <b><span className="pc-log-n">#{ev.n}</span>{ev.tipo}: {ev.planAnterior} → {ev.planNuevo}</b>
+                <ul>
+                  {ev.traza.map((t) => (
+                    <li key={t.observador}>
+                      <span className={t.estado === 'OK' ? 'pc-ok' : 'pc-fail'}>{t.estado === 'OK' ? '✔' : '✘'}</span>{' '}
+                      <b>{t.observador.replace('Observador', '')}</b> <small>{t.detalle}</small>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- STATE ----------
+
+const ESTADOS_ORDEN = ['detenido', 'cargando', 'reproduciendo', 'pausado'];
+
+function PruebaState() {
+  const [sesion, setSesion] = useState(null); // { id, estado }
+  const [eventos, setEventos] = useState([]);
+  const [error, setError] = useState('');
+
+  const anotar = (nuevos) => {
+    const utiles = nuevos.filter((e) => e.evento === 'ESTADO_CAMBIO' || e.evento === 'TRANSICION_IGNORADA');
+    setEventos((prev) => [...[...utiles].reverse(), ...prev].slice(0, 30));
+  };
+
+  const crear = async () => {
+    try {
+      if (sesion) await api.delete(`/api/stream/sesion/${sesion.id}`).catch(() => {});
+      const { data } = await api.post('/api/stream/sesion', { contenidoId: 'ambar', anchoBandaKbps: 20000 });
+      setSesion({ id: data.sesionId, estado: data.estado });
+      setEventos([]);
+      setError('');
+    } catch (e) {
+      setError(errorDe(e));
+    }
+  };
+
+  const hacer = async (accion, valor) => {
+    if (!sesion) return;
+    try {
+      const { data } = await api.post(`/api/stream/sesion/${sesion.id}/accion`, { accion, valor });
+      setSesion({ id: sesion.id, estado: data.estado });
+      anotar(data.eventos);
+      setError('');
+    } catch (e) {
+      setError(errorDe(e));
+    }
+  };
+
+  const cerrar = async () => {
+    if (!sesion) return;
+    await api.delete(`/api/stream/sesion/${sesion.id}`).catch(() => {});
+    setSesion(null);
+  };
+
+  const r = sesion?.estado.reproduccion;
+  return (
+    <div className="pc-interactive">
+      <div className="pc-controls">
+        <Boton onClick={crear}>{sesion ? 'Reiniciar sesión' : 'Crear sesión (Ámbar)'}</Boton>
+        {sesion && <Boton onClick={cerrar}>Cerrar sesión</Boton>}
+      </div>
+      {error && <div className="alert-error">{error}</div>}
+      {r && (
+        <>
+          <div className="pc-estados">
+            {ESTADOS_ORDEN.map((n) => (
+              <span key={n} className={`pc-estado ${r.estado === n ? 'pc-estado-activo' : ''}`}>{n}</span>
+            ))}
+          </div>
+          <p className="pc-hint">
+            Acciones que admite <b>{r.estado}</b>: <b>{r.accionesPermitidas.join(', ')}</b> · posición {r.posicionSeg}s · buffer {sesion.estado.buffer.segundos}s
+          </p>
+          <div className="pc-controls">
+            <Boton onClick={() => hacer('reproducir')}>▶ Reproducir</Boton>
+            <Boton onClick={() => hacer('pausar')}>⏸ Pausar</Boton>
+            <Boton onClick={() => hacer('avanzar', 10)}>⏩ Avanzar 10 s</Boton>
+            <Boton onClick={() => hacer('buscar', 200)}>⏭ Buscar a 200 s</Boton>
+            <Boton onClick={() => hacer('buscar', 8035)}>⏭ Ir al final</Boton>
+          </div>
+          <p className="pc-hint">Prueba una acción que el estado no admite (p. ej. ⏸ Pausar con el video detenido): se ignora y queda anotada.</p>
+        </>
+      )}
+      {eventos.length > 0 && (
+        <div className="pc-log">
+          <p className="pc-hint">Transiciones (la más reciente primero):</p>
+          <ul>
+            {eventos.map((ev) => (
+              <li key={ev.n}>
+                <span className="pc-log-n">#{ev.n}</span>
+                {ev.evento === 'ESTADO_CAMBIO' ? (
+                  <><b className="pc-ok">{ev.datos.de} → {ev.datos.a}</b><small> {ev.datos.motivo}</small></>
+                ) : (
+                  <><b className="pc-fail">IGNORADA {ev.datos.evento}</b><small> en "{ev.datos.estado}" (permitidas: {ev.datos.permitidas.join(', ')})</small></>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- VISITOR ----------
+
+function PruebaVisitor() {
+  const [raiz, setRaiz] = useState('catalogo');
+  const [visitante, setVisitante] = useState('estadisticas');
+  const [r, setR] = useState(null);
+  const [error, setError] = useState('');
+
+  const generar = async (v = visitante, rz = raiz) => {
+    try {
+      const { data } = await api.get(`/api/catalogo/${rz}/reporte`, { params: { visitante: v } });
+      setR(data);
+      setError('');
+    } catch (e) {
+      setError(errorDe(e));
+    }
+  };
+
+  return (
+    <div className="pc-interactive">
+      <div className="pc-controls">
+        <label>
+          Recorrer desde
+          <select className="pc-select" value={raiz} onChange={(e) => { setRaiz(e.target.value); setR(null); }}>
+            <option value="catalogo">Todo el catálogo</option>
+            <option value="horizonte-nocturno">Serie "Horizonte Nocturno"</option>
+            <option value="suspenso-y-accion">Colección "Suspenso y acción"</option>
+            <option value="ambar">Película "Ámbar" (una hoja)</option>
+          </select>
+        </label>
+        <label>
+          Visitante
+          <select className="pc-select" value={visitante} onChange={(e) => { setVisitante(e.target.value); setR(null); }}>
+            <option value="estadisticas">VisitanteEstadisticas</option>
+            <option value="almacenamiento">VisitanteAlmacenamiento</option>
+            <option value="csv">VisitanteExportadorCSV</option>
+          </select>
+        </label>
+        <Boton onClick={() => generar()}>Generar reporte</Boton>
+      </div>
+      {error && <div className="alert-error">{error}</div>}
+
+      {r && (
+        <div className="pc-log">
+          <p className="pc-hint">{r.visitante} recorrió <b>{r.nodosVisitados}</b> nodo(s) desde "{r.raiz}".</p>
+          {r.visitante === 'estadisticas' && (
+            <>
+              <ul className="pc-state">
+                {Object.entries(r.porTipo).map(([t, n]) => <li key={t}><span>{t}</span><b>{n}</b></li>)}
+                <li><span>Duración total</span><b>{r.duracionTexto}</b></li>
+                <li><span>Reproducibles</span><b>{r.reproducibles}</b></li>
+                <li><span>Más largo</span><b>{r.masLargo?.titulo} ({r.masLargo?.duracionMin} min)</b></li>
+                <li><span>Profundidad</span><b>{r.profundidadMaxima}</b></li>
+              </ul>
+              <p className="pc-hint">Títulos por género: {Object.entries(r.titulosPorGenero).map(([g, n]) => `${g} ${n}`).join(' · ')}</p>
+            </>
+          )}
+          {r.visitante === 'almacenamiento' && (
+            <ul className="pc-state">
+              {Object.entries(r.calidades).map(([res, c]) => <li key={res}><span>{res} · {c.bitrateKbps} kbps</span><b>{c.gb} GB</b></li>)}
+              <li><span>Duración</span><b>{r.duracionTotalMin} min</b></li>
+            </ul>
+          )}
+          {r.visitante === 'csv' && <pre className="pc-pre">{r.csv}</pre>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------- panel principal ----------
 
 export default function PatronesComportamiento({ user, onUsuarioActualizado }) {
@@ -577,7 +841,7 @@ export default function PatronesComportamiento({ user, onUsuarioActualizado }) {
       <div className="pc-head">
         <span className="dash-plan-badge">Patrones de comportamiento</span>
         <button type="button" className="btn-primary pc-btn-verify" onClick={verificarTodos} disabled={algunoEjecutando}>
-          {algunoEjecutando ? 'Verificando…' : '▶ Verificar los 5 patrones'}
+          {algunoEjecutando ? 'Verificando…' : '▶ Verificar los 8 patrones'}
         </button>
       </div>
 
@@ -622,6 +886,9 @@ export default function PatronesComportamiento({ user, onUsuarioActualizado }) {
         {activo === 'memento' && <PruebaMemento />}
         {activo === 'chain' && <PruebaChain user={user} />}
         {activo === 'command' && <PruebaCommand user={user} onUsuarioActualizado={onUsuarioActualizado} />}
+        {activo === 'observer' && <PruebaObserver user={user} onUsuarioActualizado={onUsuarioActualizado} />}
+        {activo === 'state' && <PruebaState />}
+        {activo === 'visitor' && <PruebaVisitor />}
 
         <Verificador checks={resultados[activo]} cargando={Boolean(ejecutando[activo])} onVerificar={() => verificar(activo)} />
       </div>

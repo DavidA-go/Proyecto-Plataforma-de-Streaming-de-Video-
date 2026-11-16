@@ -1,6 +1,7 @@
 import CatalogoService from '../catalog/CatalogoService.js';
 import PerfilRecomendacionRegistry from '../recommendation/PerfilRecomendacionRegistry.js';
 import { ErrorNegocio } from '../proxy/errores.js';
+import { crearVisitante } from '../catalog/visitor/crearVisitante.js';
 
 const LIMITE_POR_DEFECTO = 20;
 const LIMITE_MAXIMO = 100;
@@ -78,6 +79,31 @@ class CatalogoServicio {
       siguiente: hayMas ? salto + elementos.length : null, // valor para pedir la página siguiente
       elementos,
     };
+  }
+
+  /**
+   * VISITOR — genera un reporte recorriendo el nodo `id` (y todo lo que cuelga de él) con un visitante.
+   * Cada reporte es una clase visitante; este método no cambia cuando se agrega uno nuevo
+   * (solo se registra en catalog/visitor/crearVisitante.js).
+   *
+   * @param {string} id          nodo raíz del reporte ("catalogo" = todo)
+   * @param {string} visitante   'estadisticas' (por defecto) | 'almacenamiento' | 'csv'
+   * @param {string} calidades   solo para 'almacenamiento': resoluciones separadas por coma (ej. "720p,1080p")
+   */
+  reporte({ id = 'catalogo', visitante = 'estadisticas', calidades } = {}) {
+    const raiz = CatalogoService.buscar(id);
+    if (!raiz) throw new ErrorNegocio(`Contenido "${id}" no encontrado.`, 404);
+
+    let v;
+    try {
+      const opciones = calidades ? { calidades: String(calidades).split(',').map((c) => c.trim()).filter(Boolean) } : {};
+      v = crearVisitante(visitante, opciones);
+    } catch (e) {
+      throw new ErrorNegocio(e.message);
+    }
+    raiz.aceptar(v); // doble despacho: el nodo elige el método del visitante según su tipo
+    console.log(`🧳 [Visitor] ${v.constructor.name} recorrió ${v.nodosVisitados} nodo(s) desde "${id}"`);
+    return { raiz: id, visitante, ...v.resultado() };
   }
 
   /**

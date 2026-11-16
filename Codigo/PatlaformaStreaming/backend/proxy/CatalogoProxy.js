@@ -40,6 +40,12 @@ class CatalogoProxy extends ProxyProtegido {
     return this.real.recorrer(opciones);
   }
 
+  /** Visitor: reportes sobre el árbol del catálogo (mismo permiso que ver el catálogo). */
+  reporte(opciones) {
+    this.exigir('generar reporte del catálogo', P.CATALOGO_VER);
+    return this.real.reporte(opciones);
+  }
+
   /** Iterator: siguiente reproducible en el orden del catálogo. */
   siguiente(id) {
     this.exigir('obtener siguiente contenido', P.CATALOGO_VER);

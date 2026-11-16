@@ -386,7 +386,7 @@ export default function Dashboard() {
           </Link>
         </div>
 
-        {/* Validación de los patrones de comportamiento: Iterator, Mediator, Memento, Chain y Command */}
+        {/* Validación de los patrones de comportamiento: Iterator, Mediator, Memento, Chain, Command, Observer, State y Visitor */}
         {mostrarPatrones && user && (
           <PatronesComportamiento user={user} onUsuarioActualizado={handleUsuarioActualizado} />
         )}

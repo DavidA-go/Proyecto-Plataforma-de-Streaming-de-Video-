@@ -69,6 +69,16 @@ class ElementoContenido {
     return crearIterador(this, orden, predicado);
   }
 
+  /**
+   * VISITOR (accept del patrón): cada clase concreta llama al método del visitante que le
+   * corresponde (doble despacho). Así se pueden añadir operaciones al árbol sin tocar los nodos.
+   * @param {VisitanteContenido} visitante
+   */
+  // eslint-disable-next-line no-unused-vars
+  aceptar(visitante) {
+    throw new Error('aceptar() debe ser implementado por la subclase.');
+  }
+
   /** Busca un nodo por id dentro de este elemento (y de sus descendientes). */
   buscar(id) {
     return this.id === id ? this : null;

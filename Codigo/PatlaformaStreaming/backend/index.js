@@ -195,6 +195,12 @@ app.post('/api/usuarios/:id/plan/deshacer', ruta(async (req, res, s) => {
   });
 }));
 
+// Ruta: Observer. Qué observadores hay y qué hizo cada uno tras los últimos cambios de plan del usuario.
+// Mismos permisos que ver el plan (propio -> usuario/admin; ajeno -> admin).
+app.get('/api/usuarios/:id/plan/eventos', ruta((req, res, s) => {
+  res.status(200).json(s.suscripcion.eventosPlan(req.params.id));
+}));
+
 // ------------------------------------------------------------------
 // DRM: autoriza la reproducción de un contenido (Facade por debajo).
 // El usuario SIEMPRE es el autenticado (el proxy ignora cualquier usuarioId del body).
@@ -306,6 +312,13 @@ app.get('/api/catalogo/:id', ruta((req, res, s) => {
 app.get('/api/catalogo/:id/recorrer', ruta((req, res, s) => {
   const { orden, genero, tipo, desde, limite } = req.query;
   res.status(200).json(s.catalogo.recorrer({ id: req.params.id, orden, genero, tipo, desde, limite }));
+}));
+
+// Catálogo (Visitor). Reporte sobre el nodo :id (use "catalogo" para todo).
+//   ?visitante=estadisticas|almacenamiento|csv  &calidades=720p,1080p (solo almacenamiento)
+app.get('/api/catalogo/:id/reporte', ruta((req, res, s) => {
+  const { visitante, calidades } = req.query;
+  res.status(200).json(s.catalogo.reporte({ id: req.params.id, visitante, calidades }));
 }));
 
 // Catálogo (Iterator). Siguiente reproducible después de :id en el orden del catálogo (autoplay).
