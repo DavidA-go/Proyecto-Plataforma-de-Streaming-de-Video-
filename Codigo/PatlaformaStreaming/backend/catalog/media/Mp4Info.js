@@ -73,7 +73,7 @@ const CODEC_AUDIO = { mp4a: 'AAC', 'ac-3': 'AC-3', 'ec-3': 'E-AC-3', Opus: 'Opus
 export function infoMp4(ruta) {
   try {
     const { orden, moov } = leerEstructura(ruta);
-    if (!moov) return null;
+    if (!moov) { infoMp4.ultimoError = 'no se encontró el índice (moov): el archivo está incompleto, cortado o no es un MP4'; return null; }
     const info = { duracionSeg: null, ancho: null, alto: null, codecVideo: null, codecAudio: null, moovAlInicio: orden.indexOf('moov') < orden.indexOf('mdat') || orden.indexOf('mdat') === -1 };
 
     const raiz = { ini: 0, fin: moov.length };
@@ -108,7 +108,8 @@ export function infoMp4(ruta) {
     // Chrome, Edge, Firefox y Safari reproducen H.264 + AAC en cualquier equipo; HEVC/AV1/AC-3 dependen del equipo.
     info.reproducibleEnNavegador = ['avc1', 'avc3'].includes(info.codecVideo) && (info.codecAudio === null || info.codecAudio === 'mp4a');
     return info;
-  } catch {
+  } catch (e) {
+    infoMp4.ultimoError = `${e.code ? `${e.code}: ` : ''}${e.message}`; // para que el aviso diga POR QUÉ no se pudo leer
     return null;
   }
 }

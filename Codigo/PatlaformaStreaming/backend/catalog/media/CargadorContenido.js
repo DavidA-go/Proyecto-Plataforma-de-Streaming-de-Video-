@@ -64,7 +64,7 @@ class CargadorContenido {
         // La duración de verdad sale del propio MP4; "duracionMin" del meta.json solo es el respaldo.
         const infos = presentes.map((a) => ({ a, info: infoMp4(path.join(dirContenido, a.archivo)) }));
         for (const { a, info } of infos) {
-          if (!info) { console.warn(`⚠️  [Contenido] ${carpeta.name}/${a.archivo} no parece un MP4 válido: puede que no se reproduzca.`); continue; }
+          if (!info) { console.warn(`⚠️  [Contenido] ${carpeta.name}/${a.archivo} no se pudo leer como MP4 (${infoMp4.ultimoError ?? 'motivo desconocido'}): puede que no se reproduzca.`); continue; }
           if (!info.reproducibleEnNavegador) {
             console.warn(`⚠️  [Contenido] ${carpeta.name}/${a.archivo} usa ${nombreCodecVideo(info.codecVideo)} + ${nombreCodecAudio(info.codecAudio)}: muchos navegadores no lo reproducen. Conviértelo a H.264 + AAC.`);
           }
