@@ -1,4 +1,5 @@
 import StreamManifestBuilder from './StreamManifestBuilder.js';
+import FuenteSimulada from '../catalog/media/FuenteSimulada.js';
 
 /**
  * StreamDelivery.js
@@ -22,11 +23,21 @@ import StreamManifestBuilder from './StreamManifestBuilder.js';
  * ------------------------------------------------------------------
  */
 class StreamDelivery {
-  constructor(protocolo) {
+  /**
+   * @param {StreamingProtocol} protocolo  el "puente" hacia la implementación concreta
+   * @param {object} [opciones]
+   * @param {FuenteMedia} [opciones.fuente]  origen del video (por defecto, la simulada de siempre)
+   * @param {string|null} [opciones.techoCalidad]  calidad máxima que permite el plan (null = sin límite)
+   * @param {boolean} [opciones.calidadUnica]  el plan no permite elegir calidad: se ofrece solo una
+   */
+  constructor(protocolo, { fuente = FuenteSimulada.INSTANCIA, techoCalidad = null, calidadUnica = false } = {}) {
     if (new.target === StreamDelivery) {
       throw new Error('StreamDelivery es abstracta, usa VODDelivery o LiveDelivery.');
     }
-    this.protocolo = protocolo; // el "puente" hacia la implementación concreta
+    this.protocolo = protocolo;
+    this.fuente = fuente;
+    this.techoCalidad = techoCalidad;
+    this.calidadUnica = calidadUnica;
   }
 
   /** Debe ser sobrescrito: qué calidades ofrece este tipo de entrega. */
@@ -50,7 +61,7 @@ class StreamDelivery {
 
     // Flyweight: cada calidad es un objeto compartido; solo la URL es propia de este contenido.
     for (const calidad of this.calidadesDisponibles()) {
-      const url = this.protocolo.construirUrl(contenidoId, calidad.resolucion);
+      const url = this.protocolo.construirUrl(contenidoId, calidad.resolucion, this.fuente);
       builder.agregarCalidadCompartida(calidad, url);
     }
 
@@ -62,6 +73,10 @@ class StreamDelivery {
       tipoEntrega: this.tipoEntrega(),
       protocolo: this.protocolo.nombre(),
       formatoManifiesto: this.protocolo.infoManifiesto(),
+      // El Builder marca "adaptativo" si hay 2+ calidades; además el PROTOCOLO tiene que poder adaptarse solo.
+      adaptativo: manifest.adaptativo && this.protocolo.esAdaptativo(),
+      reproduccionReal: this.fuente.esReal(),
+      ...(this.fuente.esReal() ? { creditos: this.fuente.creditos() } : {}),
     };
   }
 }

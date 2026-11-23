@@ -96,7 +96,7 @@ caso('una hoja se recorre a sí misma', () => {
 
 caso('predicado: filtra por género y por tipo', () => {
   const peliculas = ids(raiz.crearIterador('profundidad', (n) => n.tipo() === 'pelicula'));
-  assert.equal(peliculas.length, 4);
+  assert.equal(peliculas.length, 4 + (CatalogoService.buscar('spring') ? 1 : 0)); // 4 de ejemplo + Spring (video real)
   const familiares = ids(raiz.crearIterador('profundidad', (n) => n.getGeneros().includes('familiar') && n.tipo() === 'serie'));
   assert.deepEqual(familiares.sort(), ['la-otra-orilla', 'reino-de-papel']);
 });
@@ -525,7 +525,7 @@ await casoAsync('Iterator por HTTP: recorrido paginado y siguiente episodio', as
   const p2 = await http('GET', `/api/catalogo/horizonte-nocturno/recorrer?orden=profundidad&limite=4&desde=${p1.data.siguiente}`, { token: tUma });
   assert.equal(p2.data.elementos[0].id, 'horizonte-nocturno-t1-e3');
   const pel = await http('GET', '/api/catalogo/catalogo/recorrer?orden=reproducibles&tipo=pelicula&limite=50', { token: tUma });
-  assert.equal(pel.data.cantidad, 4);
+  assert.equal(pel.data.cantidad, 4 + (CatalogoService.buscar('spring') ? 1 : 0)); // 4 de ejemplo + Spring (video real)
   assert.equal(pel.data.siguiente, null);
   const sig = await http('GET', '/api/catalogo/horizonte-nocturno-t1-e4/siguiente', { token: tUma });
   assert.equal(sig.data.siguiente.id, 'horizonte-nocturno-t2-e1');

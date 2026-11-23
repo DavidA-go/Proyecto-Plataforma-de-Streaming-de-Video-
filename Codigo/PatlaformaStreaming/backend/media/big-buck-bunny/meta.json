@@ -1,0 +1,16 @@
+{
+  "id": "big-buck-bunny",
+  "tipo": "pelicula",
+  "titulo": "Big Buck Bunny",
+  "duracionMin": 10.5,
+  "generos": ["animacion", "comedia", "familiar"],
+  "archivos": [
+    { "resolucion": "360p", "archivo": "360p.mp4" },
+    { "resolucion": "720p", "archivo": "720p.mp4" }
+  ],
+  "creditos": {
+    "autor": "Blender Foundation",
+    "licencia": "CC-BY 3.0",
+    "url": "https://peach.blender.org"
+  }
+}

@@ -4,6 +4,7 @@ import Episodio from './Episodio.js';
 import Temporada from './Temporada.js';
 import Serie from './Serie.js';
 import Coleccion from './Coleccion.js';
+import CargadorContenido from './media/CargadorContenido.js';
 
 /**
  * catalogoDemo.js
@@ -14,9 +15,10 @@ import Coleccion from './Coleccion.js';
  * (ej. "El Último Vuelo" -> "el-ultimo-vuelo"), así las tarjetas que ya
  * existen en el frontend apuntan directamente a nodos de este árbol.
  *
- * Cuando haya contenido real, solo cambia ESTE archivo: en vez de datos
- * escritos a mano, el árbol se construye leyendo la base de datos. Las
- * clases del Composite no se tocan.
+ * Contenido real: construirCatalogo() toma este árbol de ejemplo y le cuelga
+ * una colección con los títulos que haya en backend/media/<id>/meta.json
+ * (ver catalog/media/). Las clases del Composite no se tocan: un título real
+ * es una hoja más, solo que su "fuente" de video apunta a archivos de verdad.
  * ------------------------------------------------------------------
  */
 export const slug = (texto) =>
@@ -92,4 +94,28 @@ export function construirCatalogoDemo() {
     .agregar(dramaMisterio)
     .agregar(aventuraFamilia)
     .agregar(documentales);
+}
+
+/**
+ * Catálogo COMPLETO = ejemplos en memoria + contenido real de backend/media/.
+ * Si no hay carpetas con meta.json (o faltan los archivos), queda solo el demo.
+ */
+export function construirCatalogo() {
+  const raiz = construirCatalogoDemo();
+
+  const reales = CargadorContenido.cargar();
+  if (reales.length > 0) {
+    // Un id repetido haría que el catálogo devolviera siempre el primero: se descarta el título real repetido.
+    const nuevos = reales.filter((nodo) => {
+      const repetido = raiz.buscar(nodo.id);
+      if (repetido) console.warn(`⚠️  [Catálogo] "${nodo.id}" ya existe en el catálogo de ejemplo: cambia el id de backend/media/${nodo.id}/ para que se cargue.`);
+      return !repetido;
+    });
+    if (nuevos.length === 0) return raiz;
+    const abierto = new Coleccion('contenido-abierto', 'Contenido abierto (Blender)');
+    nuevos.forEach((nodo) => abierto.agregar(nodo));
+    raiz.agregar(abierto);
+    console.log(`🎬 [Catálogo] ${nuevos.length} título(s) con video real: ${nuevos.map((n) => n.id).join(', ')}`);
+  }
+  return raiz;
 }

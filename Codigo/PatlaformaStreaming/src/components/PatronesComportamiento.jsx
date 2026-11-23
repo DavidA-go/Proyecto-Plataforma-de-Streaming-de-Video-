@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
 import api from '../api';
 import { VERIFICACIONES } from '../patronesChecks';
+import { NOMBRE_CATEGORIA, categoriaSugerida } from '../perfilPlan';
 
 // ------------------------------------------------------------------
 // Panel "Validación de patrones de comportamiento" del Dashboard.
-// Una pestaña por patrón (Iterator, Mediator, Memento, Chain, Command, Observer, State, Visitor).
+// Una pestaña por patrón (Iterator, Mediator, Memento, Chain, Command, Observer, State, Visitor, Strategy, Template Method).
 // Cada pestaña tiene:
 //   1) una prueba INTERACTIVA que llama a los endpoints reales, y
 //   2) una VERIFICACIÓN AUTOMÁTICA (patronesChecks.js) que ejecuta un
@@ -67,6 +68,20 @@ const PATRONES = [
     donde: 'Gestión de contenido · catalog/visitor',
     idea: 'Reportes sobre el árbol del catálogo (estadísticas, espacio en disco, CSV) sin tocar las clases de los nodos: cada nodo solo acepta al visitante y este decide qué hacer según el tipo (doble despacho).',
     roles: 'Visitor: VisitanteContenido · Concretos: VisitanteEstadisticas, VisitanteAlmacenamiento, VisitanteExportadorCSV · Element: ElementoContenido.aceptar()',
+  },
+  {
+    id: 'strategy',
+    nombre: 'Strategy',
+    donde: 'Recomendación · recommendation/strategy',
+    idea: 'La forma de PUNTUAR un título para ti es intercambiable: por géneros, por lo que has visto o una mezcla según el "pesoHistorial" de tu perfil. El generador no sabe cuál usa; se elige al pedir la recomendación.',
+    roles: 'Strategy: EstrategiaPuntuacion · Concretas: PuntuacionPorGeneros, PuntuacionPorHistorial, PuntuacionHibrida · Context: GeneradorRecomendaciones (paso puntuar)',
+  },
+  {
+    id: 'template',
+    nombre: 'Template Method',
+    donde: 'Recomendación · recommendation/template',
+    idea: 'Toda recomendación sigue el mismo esqueleto fijo (preparar → candidatos → filtrar → puntuar → ordenar → explicar). Cada tipo (para ti, similares, descubrir) solo redefine los pasos que cambian: de dónde salen los candidatos, qué se filtra y cómo se explica.',
+    roles: 'Clase abstracta: GeneradorRecomendaciones.generar() · Subclases: RecomendacionParaTi, RecomendacionSimilares, RecomendacionDescubrir',
   },
 ];
 
@@ -330,8 +345,9 @@ function PruebaMediator() {
 
 // ---------- MEMENTO ----------
 
-function PruebaMemento() {
+function PruebaMemento({ user, onPerfilCambiado }) {
   const [vista, setVista] = useState(null); // { perfil, historial, puedeDeshacer, puedeRehacer }
+  const sugerida = categoriaSugerida(user?.planTipo);
   const [peso, setPeso] = useState(0.5);
   const [genero, setGenero] = useState('');
   const [mensaje, setMensaje] = useState('');
@@ -339,6 +355,7 @@ function PruebaMemento() {
 
   const aplicar = (data, texto) => {
     setVista(data);
+    onPerfilCambiado?.(data.perfil); // la tarjeta «Tu perfil de recomendación» del Dashboard se actualiza al instante
     setPeso(data.perfil.pesoHistorial);
     setMensaje(texto || '');
     setError('');
@@ -365,14 +382,30 @@ function PruebaMemento() {
   const PERFIL = '/api/recomendaciones/mi-perfil';
   return (
     <div className="pc-interactive">
+      <p className="pc-hint">
+        Tu <b>plan de suscripción</b> es <b>{user?.planTipo || '—'}</b>; tu <b>perfil de recomendación</b> son tus gustos (géneros, tipo de contenido y peso del historial). Son cosas
+        distintas: el plan solo sugiere la plantilla inicial (<b>{NOMBRE_CATEGORIA[sugerida]}</b>), y cambiar de plan NO modifica el perfil.
+      </p>
       <div className="pc-controls">
         <Boton onClick={cargar}>Ver mi perfil</Boton>
         {!vista && (
-          <>
-            <Boton onClick={() => ejecutar(() => api.put(PERFIL, { categoriaBase: 'familiar' }), 'Perfil creado desde la plantilla "familiar".')}>Crear (familiar)</Boton>
-            <Boton onClick={() => ejecutar(() => api.put(PERFIL, { categoriaBase: 'documental' }), 'Perfil creado desde la plantilla "documental".')}>Crear (documental)</Boton>
-          </>
+          <Boton onClick={() => ejecutar(() => api.put(PERFIL, { categoriaBase: sugerida }), `Perfil creado desde la plantilla "${sugerida}" (la que sugiere tu plan).`)}>
+            Crear según mi plan ({NOMBRE_CATEGORIA[sugerida]})
+          </Boton>
         )}
+        {Object.entries(NOMBRE_CATEGORIA).map(([cat, nombre]) => (
+          <Boton
+            key={cat}
+            onClick={() =>
+              ejecutar(
+                () => api.put(PERFIL, { categoriaBase: cat }),
+                vista ? `Perfil reemplazado por la plantilla "${nombre}" (se guardó una versión: puedes deshacer).` : `Perfil creado desde la plantilla "${nombre}".`,
+              )
+            }
+          >
+            {vista ? `Usar plantilla ${nombre}` : `Crear (${nombre})`}
+          </Boton>
+        ))}
       </div>
       {error && <div className="alert-error">{error}</div>}
       {mensaje && <p className="pc-result">{mensaje}</p>}
@@ -814,9 +847,127 @@ function PruebaVisitor() {
   );
 }
 
+// ---------- STRATEGY + TEMPLATE METHOD ----------
+
+const REC = '/api/recomendaciones';
+const TITULOS_DEMO = [
+  ['raices-de-cobre', 'Raíces de Cobre (documental)'],
+  ['selva-digital', 'Selva Digital (documental)'],
+  ['ambar', 'Ámbar (drama, aventura)'],
+  ['el-ultimo-vuelo', 'El Último Vuelo (acción, thriller)'],
+];
+
+// Controles y resultado compartidos por las dos pestañas: la de Strategy fija el tipo, la de Template Method fija la estrategia.
+function PruebaRecomendacion({ modo }) {
+  const [tipo, setTipo] = useState('para-ti');
+  const [estrategia, setEstrategia] = useState('hibrida');
+  const [referencia, setReferencia] = useState('ambar');
+  const [resultado, setResultado] = useState(null);
+  const [historial, setHistorial] = useState([]);
+  const [error, setError] = useState('');
+
+  const cargarHistorial = async () => setHistorial((await api.get(`${REC}/historial`)).data.vistos);
+
+  const recomendar = async (t = tipo, e = estrategia) => {
+    try {
+      const { data } = await api.get(REC, { params: { tipo: t, estrategia: e, limite: 6, ...(t === 'similares' ? { contenidoId: referencia } : {}) } });
+      setResultado(data);
+      setError('');
+      await cargarHistorial();
+    } catch (err) {
+      setResultado(null);
+      setError(err.response?.status === 404 && /perfil/i.test(errorDe(err)) ? 'Aún no tienes perfil: créalo en la pestaña Memento.' : errorDe(err));
+    }
+  };
+
+  const accionHistorial = async (peticion) => {
+    try {
+      await peticion();
+      await cargarHistorial();
+      setError('');
+    } catch (err) {
+      setError(errorDe(err));
+    }
+  };
+
+  return (
+    <div className="pc-interactive">
+      <div className="pc-controls">
+        <label>
+          Tipo (Template Method)
+          <select className="pc-select" value={tipo} disabled={modo === 'strategy'} onChange={(e) => setTipo(e.target.value)}>
+            <option value="para-ti">RecomendacionParaTi</option>
+            <option value="similares">RecomendacionSimilares</option>
+            <option value="descubrir">RecomendacionDescubrir</option>
+          </select>
+        </label>
+        <label>
+          Estrategia (Strategy)
+          <select className="pc-select" value={estrategia} disabled={modo === 'template'} onChange={(e) => setEstrategia(e.target.value)}>
+            <option value="hibrida">PuntuacionHibrida</option>
+            <option value="generos">PuntuacionPorGeneros</option>
+            <option value="historial">PuntuacionPorHistorial</option>
+          </select>
+        </label>
+        {tipo === 'similares' && (
+          <label>
+            Parecido a
+            <select className="pc-select" value={referencia} onChange={(e) => setReferencia(e.target.value)}>
+              {TITULOS_DEMO.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
+            </select>
+          </label>
+        )}
+        <Boton onClick={() => recomendar()}>Recomendar</Boton>
+        {modo === 'strategy' && (
+          <Boton onClick={async () => { for (const e of ['generos', 'historial', 'hibrida']) { await recomendar('para-ti', e); } }}>
+            Probar las 3 estrategias
+          </Boton>
+        )}
+      </div>
+
+      <div className="pc-controls">
+        <span className="pc-hint">Marcar como visto:</span>
+        {TITULOS_DEMO.map(([id, nombre]) => (
+          <Boton key={id} onClick={() => accionHistorial(() => api.post(`${REC}/historial`, { contenidoId: id }))}>{nombre.split(' (')[0]}</Boton>
+        ))}
+        <Boton onClick={() => accionHistorial(() => api.delete(`${REC}/historial`))}>Borrar historial</Boton>
+      </div>
+      <p className="pc-hint">Historial ({historial.length}): {historial.map((v) => v.titulo).join(', ') || 'vacío'}</p>
+
+      {error && <div className="alert-error">{error}</div>}
+
+      {resultado && (
+        <div className="pc-log">
+          <p className="pc-hint">
+            <b>{resultado.plantilla}</b> con estrategia <b>{resultado.estrategia}</b>
+          </p>
+          {modo === 'template' && (
+            <ol className="pc-steps">
+              {resultado.pasos.map((p) => (
+                <li key={p.paso}><b>{p.paso}</b>{p.cantidad !== undefined && ` (${p.cantidad})`}{p.nota && <small> · {p.nota}</small>}</li>
+              ))}
+            </ol>
+          )}
+          {resultado.recomendaciones.length === 0 ? (
+            <p className="pc-hint">Sin recomendaciones: con esta estrategia no hay nada con puntaje mayor a 0 (¿falta historial?).</p>
+          ) : (
+            <ul>
+              {resultado.recomendaciones.map((r) => (
+                <li key={r.id}>
+                  <span className="pc-log-n">{r.puntaje.toFixed(3)}</span> <b>{r.titulo}</b> <small>({r.tipo}) · {r.motivo}</small>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------- panel principal ----------
 
-export default function PatronesComportamiento({ user, onUsuarioActualizado }) {
+export default function PatronesComportamiento({ user, onUsuarioActualizado, onPerfilCambiado }) {
   const [activo, setActivo] = useState('iterator');
   const [resultados, setResultados] = useState({}); // id -> checks[]
   const [ejecutando, setEjecutando] = useState({}); // id -> boolean
@@ -829,7 +980,7 @@ export default function PatronesComportamiento({ user, onUsuarioActualizado }) {
   };
 
   const verificarTodos = async () => {
-    for (const p of PATRONES) await verificar(p.id); // en serie: Memento y Command tocan datos del usuario
+    for (const p of PATRONES) await verificar(p.id); // en serie: Memento, Command, Strategy y Template tocan datos del usuario
   };
 
   const patron = PATRONES.find((p) => p.id === activo);
@@ -841,7 +992,7 @@ export default function PatronesComportamiento({ user, onUsuarioActualizado }) {
       <div className="pc-head">
         <span className="dash-plan-badge">Patrones de comportamiento</span>
         <button type="button" className="btn-primary pc-btn-verify" onClick={verificarTodos} disabled={algunoEjecutando}>
-          {algunoEjecutando ? 'Verificando…' : '▶ Verificar los 8 patrones'}
+          {algunoEjecutando ? 'Verificando…' : '▶ Verificar los 10 patrones'}
         </button>
       </div>
 
@@ -883,12 +1034,14 @@ export default function PatronesComportamiento({ user, onUsuarioActualizado }) {
 
         {activo === 'iterator' && <PruebaIterator />}
         {activo === 'mediator' && <PruebaMediator />}
-        {activo === 'memento' && <PruebaMemento />}
+        {activo === 'memento' && <PruebaMemento user={user} onPerfilCambiado={onPerfilCambiado} />}
         {activo === 'chain' && <PruebaChain user={user} />}
         {activo === 'command' && <PruebaCommand user={user} onUsuarioActualizado={onUsuarioActualizado} />}
         {activo === 'observer' && <PruebaObserver user={user} onUsuarioActualizado={onUsuarioActualizado} />}
         {activo === 'state' && <PruebaState />}
         {activo === 'visitor' && <PruebaVisitor />}
+        {activo === 'strategy' && <PruebaRecomendacion modo="strategy" />}
+        {activo === 'template' && <PruebaRecomendacion modo="template" />}
 
         <Verificador checks={resultados[activo]} cargando={Boolean(ejecutando[activo])} onVerificar={() => verificar(activo)} />
       </div>

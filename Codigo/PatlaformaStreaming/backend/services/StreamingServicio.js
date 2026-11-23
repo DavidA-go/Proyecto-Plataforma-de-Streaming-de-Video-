@@ -1,6 +1,5 @@
 import StreamManifestBuilder from '../streaming/StreamManifestBuilder.js';
-import HLSProtocol from '../streaming/HLSProtocol.js';
-import DASHProtocol from '../streaming/DASHProtocol.js';
+import { crearProtocolo, elegirProtocolo, NOMBRES_VALIDOS } from '../streaming/crearProtocolo.js';
 import VODDelivery from '../streaming/VODDelivery.js';
 import LiveDelivery from '../streaming/LiveDelivery.js';
 import CatalogoService from '../catalog/CatalogoService.js';
@@ -8,6 +7,9 @@ import CalidadVideoFactory from '../flyweight/CalidadVideoFactory.js';
 import SesionReproduccion from '../streaming/mediator/SesionReproduccion.js';
 import RegistroSesiones from '../streaming/mediator/RegistroSesiones.js';
 import SelectorCalidad from '../streaming/mediator/SelectorCalidad.js';
+import TokenService from '../auth/TokenService.js';
+import DRMFacade from '../drm/DRMFacade.js';
+import { LicenciaDenegadaError } from '../drm/LicenseDecorators.js';
 import { ErrorNegocio } from '../proxy/errores.js';
 
 /**
@@ -19,6 +21,14 @@ export function techoDesdePlan(textoPlan) {
   if (m && SelectorCalidad.ESCALERA.includes(`${m[1]}p`)) return `${m[1]}p`;
   if (/4k/i.test(String(textoPlan))) return SelectorCalidad.ESCALERA.at(-1);
   return SelectorCalidad.ESCALERA[0];
+}
+
+/**
+ * ¿El plan NO permite elegir calidad? Es el caso del plan gratuito ("SD (480p)"): recibe una sola
+ * versión, la más alta que cabe en su techo, y el selector del reproductor queda bloqueado.
+ */
+export function planCalidadUnica(textoPlan) {
+  return /^\s*SD\b/i.test(String(textoPlan || ''));
 }
 
 const ACCIONES_SESION = ['reproducir', 'pausar', 'buscar', 'red', 'avanzar', 'audio', 'subtitulo'];
@@ -48,27 +58,45 @@ class StreamingServicio {
     }
   }
 
-  /** Bridge (tipo de entrega x protocolo) + Composite (resolver reproducibles). */
-  generarEntrega({ contenidoId, tokenDRM, tipoEntrega, protocolo }) {
-    let protocoloConcreto;
-    if (protocolo === 'dash') protocoloConcreto = new DASHProtocol();
-    else if (protocolo === 'hls') protocoloConcreto = new HLSProtocol();
-    else throw new ErrorNegocio('protocolo inválido. Usa "hls" o "dash".');
-
-    let entrega;
-    if (tipoEntrega === 'live') entrega = new LiveDelivery(protocoloConcreto);
-    else if (tipoEntrega === 'vod') entrega = new VODDelivery(protocoloConcreto);
-    else throw new ErrorNegocio('tipoEntrega inválido. Usa "vod" o "live".');
+  /**
+   * Bridge (tipo de entrega x protocolo) + Composite (resolver reproducibles) + Factory (protocolo).
+   * El protocolo se elige POR TÍTULO según su fuente de video: los reales salen en MP4 y los
+   * de demostración en HLS/DASH, aunque se pida "auto" (o "hls") sobre una colección mezclada.
+   *
+   * @param {string} [usuarioId]      quien reproduce (lo pone el proxy); firma el acceso a los videos reales
+   * @param {string} [sesionId]       sesión DRM (licencia) que autorizó esta reproducción; obligatoria para videos reales
+   * @param {string} [calidadMaxima]  texto del plan ("SD (480p)"); recorta las calidades de los títulos REALES
+   */
+  generarEntrega({ contenidoId, tokenDRM, tipoEntrega, protocolo, usuarioId, sesionId, calidadMaxima }) {
+    if (!NOMBRES_VALIDOS.includes(protocolo)) {
+      throw new ErrorNegocio(`protocolo inválido. Usa ${NOMBRES_VALIDOS.map((n) => `"${n}"`).join(', ')}.`);
+    }
+    if (tipoEntrega !== 'live' && tipoEntrega !== 'vod') throw new ErrorNegocio('tipoEntrega inválido. Usa "vod" o "live".');
 
     const contenido = CatalogoService.buscar(contenidoId);
     if (!contenido) throw new ErrorNegocio(`Contenido "${contenidoId}" no encontrado en el catálogo.`, 404);
 
-    const reproducibles = contenido.obtenerReproducibles().map((elemento) => ({
-      id: elemento.id,
-      titulo: elemento.titulo,
-      tipo: elemento.tipo(),
-      manifest: entrega.generarManifest(elemento.id, tokenDRM),
-    }));
+    const techo = calidadMaxima ? techoDesdePlan(calidadMaxima) : null;
+
+    const reproducibles = contenido.obtenerReproducibles().map((elemento) => {
+      const fuente = elemento.getFuente();
+      if (tipoEntrega === 'live' && fuente.esReal()) {
+        throw new ErrorNegocio(`"${elemento.titulo}" tiene video real y solo se entrega bajo demanda (vod).`);
+      }
+
+      const protocoloConcreto = crearProtocolo(elegirProtocolo(protocolo, fuente));
+      // El plan solo recorta lo que de verdad existe en disco; los títulos simulados no cambian.
+      const opciones = { fuente, techoCalidad: fuente.esReal() ? techo : null, calidadUnica: fuente.esReal() && planCalidadUnica(calidadMaxima) };
+      const entrega = tipoEntrega === 'live' ? new LiveDelivery(protocoloConcreto, opciones) : new VODDelivery(protocoloConcreto, opciones);
+
+      const manifest = entrega.generarManifest(elemento.id, tokenDRM);
+      return {
+        id: elemento.id,
+        titulo: elemento.titulo,
+        tipo: elemento.tipo(),
+        manifest: fuente.esReal() ? this.#firmarAcceso(manifest, usuarioId, sesionId, tokenDRM, elemento) : manifest,
+      };
+    });
 
     return {
       message: 'Manifiesto generado con Bridge',
@@ -77,6 +105,52 @@ class StreamingServicio {
       contenido: CatalogoService.resumir(contenido),
     };
   }
+
+  /**
+   * Un video real SOLO se entrega si hay una licencia DRM vigente que lo cubra: la sesión que
+   * abrió /api/stream/autorizar (Facade) debe seguir viva, ser del mismo usuario y haber
+   * autorizado este título (o la colección/serie que lo contiene). Sin eso no hay ticket.
+   */
+  #exigirLicencia(usuarioId, sesionId, tokenDRM, elemento) {
+    if (!sesionId) {
+      throw new LicenciaDenegadaError('Para ver este video primero debes autorizar la reproducción (licencia DRM).', 'SIN_LICENCIA');
+    }
+    const sesion = DRMFacade.sesionVigente(usuarioId, sesionId);
+    if (!sesion) {
+      throw new LicenciaDenegadaError('Tu sesión de reproducción terminó o venció. Pulsa ▶ para autorizar de nuevo.', 'SESION_EXPIRADA');
+    }
+    const autorizado = CatalogoService.buscar(sesion.contenidoId);
+    const cubre = autorizado?.obtenerReproducibles().some((r) => r.id === elemento.id);
+    if (!cubre) {
+      throw new LicenciaDenegadaError(`Tu licencia no cubre "${elemento.titulo}".`, 'LICENCIA_OTRO_CONTENIDO');
+    }
+    if (tokenDRM !== sesion.licenciaId) {
+      throw new LicenciaDenegadaError('El identificador de licencia no corresponde a esta sesión.', 'LICENCIA_INVALIDA');
+    }
+    return sesion;
+  }
+
+  /**
+   * Agrega a cada URL de un video real un TICKET firmado (usuario + contenido + sesión DRM +
+   * vencimiento). El <video> del navegador no puede mandar la cabecera Authorization, así que el
+   * permiso viaja en la URL; el MediaProxy lo verifica en cada petición a /media.
+   */
+  #firmarAcceso(manifest, usuarioId, sesionId, tokenDRM, elemento) {
+    if (usuarioId === undefined || usuarioId === null) {
+      throw new ErrorNegocio('Se necesita un usuario autenticado para acceder a un video real.', 401);
+    }
+    const sesion = this.#exigirLicencia(usuarioId, sesionId, tokenDRM, elemento);
+    // El acceso al video dura lo que le quede a la LICENCIA (1440 min Premium, 120 min Básica...).
+    const minutos = sesion.expiraEn ? Math.max(1, Math.ceil((sesion.expiraEn - Date.now()) / 60000)) : undefined;
+    const { ticket, expiraEnMin } = TokenService.emitirTicket(usuarioId, elemento.id, sesionId, { minutos, offline: sesion.permiteOffline });
+    return {
+      ...manifest,
+      calidades: manifest.calidades.map((c) => ({ ...c, url: `${c.url}?ticket=${ticket}` })),
+      ticketExpiraEnMin: expiraEnMin,
+      permiteDescarga: sesion.permiteOffline, // la licencia incluye descarga offline
+    };
+  }
+
 
   // ------------------------------------------------------------------
   // MEDIATOR: sesiones de reproducción adaptativa

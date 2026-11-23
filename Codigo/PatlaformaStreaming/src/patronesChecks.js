@@ -408,6 +408,92 @@ export const verificarVisitor = protegido('Visitor', async (chk) => {
   chk('Calidad inexistente → 400', (await estadoHttp(() => reporte('catalogo', 'almacenamiento', { calidades: '7p' }))) === 400);
 });
 
+// ------------------------------------------------------------------
+// STRATEGY + TEMPLATE METHOD (Recomendación)
+// ------------------------------------------------------------------
+const REC = '/api/recomendaciones';
+const PASOS_PLANTILLA = ['prepararContexto', 'obtenerCandidatos', 'filtrar', 'puntuar', 'descartarIrrelevantes', 'ordenar+limitar', 'explicar'];
+
+// Asegura que el usuario tenga perfil (los dos patrones lo necesitan) y devuelve su historial actual para restaurarlo.
+const prepararRecomendacion = async () => {
+  try {
+    await get(`${REC}/mi-perfil`);
+  } catch (e) {
+    if (e.response?.status !== 404) throw e;
+    await api.put(`${REC}/mi-perfil`, { categoriaBase: 'accionAventura' });
+  }
+  return (await get(`${REC}/historial`)).vistos.map((v) => v.id);
+};
+const restaurarHistorial = async (ids) => {
+  await api.delete(`${REC}/historial`);
+  for (const id of ids) await api.post(`${REC}/historial`, { contenidoId: id });
+};
+const recomendar = (params) => get(REC, { params: { limite: 20, ...params } });
+
+export const verificarStrategy = protegido('Strategy', async (chk) => {
+  const previo = await prepararRecomendacion();
+  try {
+    await api.delete(`${REC}/historial`);
+
+    const op = await get(`${REC}/opciones`);
+    chk('Hay tres estrategias intercambiables: generos, historial e hibrida', ['generos', 'historial', 'hibrida'].every((id) => op.estrategias.some((e) => e.id === id)), op.estrategias.map((e) => e.id).join(', '));
+
+    const sinHist = await recomendar({ estrategia: 'historial' });
+    chk('Estrategia "historial" sin historial no encuentra nada afín (puntaje 0 = sin relación)', sinHist.estrategia === 'historial' && sinHist.recomendaciones.length === 0);
+
+    await api.post(`${REC}/historial`, { contenidoId: 'raices-de-cobre' });
+    await api.post(`${REC}/historial`, { contenidoId: 'raices-de-cobre' });
+    await api.post(`${REC}/historial`, { contenidoId: 'selva-digital' });
+
+    const g = await recomendar({ estrategia: 'generos' });
+    const h = await recomendar({ estrategia: 'historial' });
+    const m = await recomendar({ estrategia: 'hibrida' });
+    chk('"generos" e "historial" ordenan distinto con el mismo perfil (se cambió el algoritmo, no el generador)', JSON.stringify(g.recomendaciones.map((x) => x.id)) !== JSON.stringify(h.recomendaciones.map((x) => x.id)), `generos: ${g.recomendaciones[0]?.titulo} · historial: ${h.recomendaciones[0]?.titulo}`);
+    chk('Las tres responden con la MISMA plantilla (RecomendacionParaTi)', [g, h, m].every((r) => r.plantilla === 'RecomendacionParaTi'));
+    chk('Sin indicar estrategia se usa la híbrida por defecto', (await recomendar({})).estrategia === 'hibrida');
+
+    const ordenado = (r) => r.recomendaciones.every((x, i, a) => i === 0 || a[i - 1].puntaje >= x.puntaje);
+    chk('Con cualquier estrategia el resultado queda de mayor a menor puntaje', [g, h, m].every(ordenado));
+    chk('Los puntajes están entre 0 y 1', [g, h, m].every((r) => r.recomendaciones.every((x) => x.puntaje > 0 && x.puntaje <= 1)));
+    chk('Lo ya visto no se vuelve a recomendar', ![g, h, m].some((r) => r.recomendaciones.some((x) => ['raices-de-cobre', 'selva-digital'].includes(x.id))));
+    chk('Estrategia inexistente → 400', (await estadoHttp(() => recomendar({ estrategia: 'azar' }))) === 400);
+  } finally {
+    await restaurarHistorial(previo);
+  }
+});
+
+export const verificarTemplate = protegido('Template Method', async (chk) => {
+  const previo = await prepararRecomendacion();
+  try {
+    const op = await get(`${REC}/opciones`);
+    chk('Hay tres plantillas de recomendación: para-ti, similares y descubrir', ['para-ti', 'similares', 'descubrir'].every((id) => op.tipos.some((t) => t.id === id)), op.tipos.map((t) => t.id).join(', '));
+
+    const [a, b, c] = [await recomendar({ tipo: 'para-ti' }), await recomendar({ tipo: 'similares', contenidoId: 'ambar' }), await recomendar({ tipo: 'descubrir' })];
+    chk('Cada tipo lo atiende una subclase distinta', new Set([a.plantilla, b.plantilla, c.plantilla]).size === 3, [a.plantilla, b.plantilla, c.plantilla].join(' · '));
+    chk('Las tres ejecutan los mismos pasos y en el mismo orden (el esqueleto no cambia)', [a, b, c].every((r) => JSON.stringify(r.pasos.map((p) => p.paso)) === JSON.stringify(PASOS_PLANTILLA)), PASOS_PLANTILLA.join(' → '));
+    chk('Solo se recomiendan títulos (película, documental, serie), nunca episodios ni grupos', [a, b, c].every((r) => r.recomendaciones.every((x) => ['pelicula', 'documental', 'serie'].includes(x.tipo))));
+    chk('Cada recomendación trae su motivo (paso "explicar")', [a, b, c].every((r) => r.recomendaciones.every((x) => x.motivo)));
+    chk('"similares" nunca devuelve el propio título de referencia', !b.recomendaciones.some((x) => x.id === 'ambar') && b.recomendaciones.length > 0);
+    chk('"descubrir" solo propone títulos con algún género fuera de tus favoritos', c.recomendaciones.length === 0 || c.recomendaciones.every((x) => x.generos.length > 0), `${c.recomendaciones.length} propuesta(s)`);
+    chk('El límite se respeta', (await recomendar({ limite: 2 })).recomendaciones.length <= 2);
+
+    // Gancho "filtrar": para-ti quita lo visto, similares no.
+    const objetivo = a.recomendaciones[0]?.id;
+    if (objetivo) {
+      await api.post(`${REC}/historial`, { contenidoId: objetivo });
+      const tras = await recomendar({ tipo: 'para-ti' });
+      chk('Gancho filtrar() de "para-ti": lo que marcas como visto desaparece de la lista', !tras.recomendaciones.some((x) => x.id === objetivo), `"${objetivo}"`);
+    }
+
+    chk('"similares" sin contenidoId → 400', (await estadoHttp(() => recomendar({ tipo: 'similares' }))) === 400);
+    chk('"similares" con un título inexistente → 404', (await estadoHttp(() => recomendar({ tipo: 'similares', contenidoId: 'no-existe' }))) === 404);
+    chk('Tipo inexistente → 400', (await estadoHttp(() => recomendar({ tipo: 'azar' }))) === 400);
+    chk('Límite 0 → 400', (await estadoHttp(() => recomendar({ limite: 0 }))) === 400);
+  } finally {
+    await restaurarHistorial(previo);
+  }
+});
+
 export const VERIFICACIONES = {
   iterator: verificarIterator,
   mediator: verificarMediator,
@@ -417,4 +503,6 @@ export const VERIFICACIONES = {
   observer: verificarObserver,
   state: verificarState,
   visitor: verificarVisitor,
+  strategy: verificarStrategy,
+  template: verificarTemplate,
 };

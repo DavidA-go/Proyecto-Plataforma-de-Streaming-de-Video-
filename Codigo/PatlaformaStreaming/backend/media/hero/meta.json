@@ -1,0 +1,21 @@
+{
+  "id": "hero",
+  "tipo": "pelicula",
+  "titulo": "Hero",
+  "duracionMin": 3.94,
+  "generos": [
+    "animacion",
+    "accion",
+    "aventura"
+  ],
+  "archivos": [
+    {
+      "resolucion": "360p",
+      "archivo": "360p.mp4"
+    },
+    {
+      "resolucion": "480p",
+      "archivo": "480p.mp4"
+    }
+  ]
+}

@@ -14,7 +14,8 @@ class StreamingProxy extends ProxyProtegido {
 
   generarEntrega(datos) {
     this.exigir('generar entrega de streaming', P.STREAMING_REPRODUCIR);
-    return this.real.generarEntrega(datos);
+    // Siempre del propio actor: de él depende a quién se le firma el acceso a los videos reales.
+    return this.real.generarEntrega({ ...datos, usuarioId: this.actor.id });
   }
 
   // ---- Mediator: sesiones de reproducción. Siempre del propio actor (no se acepta usuarioId ajeno). ----

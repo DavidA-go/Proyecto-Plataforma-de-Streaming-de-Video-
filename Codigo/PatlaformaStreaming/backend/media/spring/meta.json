@@ -1,0 +1,16 @@
+{
+  "id": "spring",
+  "tipo": "pelicula",
+  "titulo": "Spring",
+  "duracionMin": 8,
+  "generos": ["animacion", "fantasia", "aventura"],
+  "archivos": [
+    { "resolucion": "360p", "archivo": "360p.mp4" },
+    { "resolucion": "720p", "archivo": "720p.mp4" }
+  ],
+  "creditos": {
+    "autor": "Blender Studio",
+    "licencia": "CC-BY 4.0",
+    "url": "https://studio.blender.org/films/spring/"
+  }
+}

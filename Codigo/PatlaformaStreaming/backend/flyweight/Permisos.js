@@ -26,6 +26,9 @@ export const P = Object.freeze({
   // Administración
   USUARIOS_LISTAR: 'usuarios:listar',
   USUARIOS_CAMBIAR_ROL: 'usuarios:cambiar-rol',
+  USUARIOS_CREAR: 'usuarios:crear',
+  USUARIOS_EDITAR: 'usuarios:editar',
+  USUARIOS_ELIMINAR: 'usuarios:eliminar',
   SISTEMA_ACCESOS: 'sistema:ver-accesos',
   SISTEMA_ESTADISTICAS: 'sistema:ver-estadisticas',
 });

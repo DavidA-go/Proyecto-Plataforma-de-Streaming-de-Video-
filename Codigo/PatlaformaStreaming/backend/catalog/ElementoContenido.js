@@ -13,6 +13,7 @@
  * ------------------------------------------------------------------
  */
 import { crearIterador } from './iterator/crearIterador.js';
+import FuenteSimulada from './media/FuenteSimulada.js';
 
 class ElementoContenido {
   constructor(id, titulo, generos = []) {
@@ -22,6 +23,21 @@ class ElementoContenido {
     this.id = id;
     this.titulo = titulo;
     this.generos = generos;
+    this.fuente = null; // FuenteMedia: de dónde sale el video (null = simulada). Solo importa en las hojas.
+  }
+
+  /** Asigna el origen del video (FuenteLocal para archivos reales). Devuelve this para encadenar. */
+  asignarFuente(fuente) {
+    this.fuente = fuente;
+    return this;
+  }
+
+  /**
+   * Origen del video de esta hoja. Si nadie le asignó una, devuelve la FuenteSimulada
+   * (Null Object): el resto del código nunca necesita preguntar si "hay archivo o no".
+   */
+  getFuente() {
+    return this.fuente ?? FuenteSimulada.INSTANCIA;
   }
 
   /** 'pelicula' | 'documental' | 'episodio' | 'temporada' | 'serie' | 'coleccion' */
@@ -94,10 +110,14 @@ class ElementoContenido {
     return coincide ? this.toJSON() : null;
   }
 
+  /** Minutos (pueden tener decimales, p. ej. un video de 7:44) -> "8m", "1h 30m" o "7m 44s". */
   static formatearDuracion(totalMin) {
-    const h = Math.floor(totalMin / 60);
-    const m = totalMin % 60;
-    return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
+    const totalSeg = Math.round(totalMin * 60);
+    const h = Math.floor(totalSeg / 3600);
+    const m = Math.floor((totalSeg % 3600) / 60);
+    const s = totalSeg % 60;
+    const seg = s > 0 ? ` ${String(s).padStart(2, '0')}s` : '';
+    return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m${seg}` : `${m}m${seg}`;
   }
 
   getDuracionFormateada() {
@@ -112,6 +132,8 @@ class ElementoContenido {
       duracionMin: this.getDuracion(),
       duracionTexto: this.getDuracionFormateada(),
       generos: this.getGeneros(),
+      // Solo las hojas con video real agregan estos campos: el JSON del resto no cambia.
+      ...(this.fuente?.esReal() ? { contenidoReal: true, creditos: this.fuente.creditos() } : {}),
     };
   }
 }

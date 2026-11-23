@@ -90,6 +90,10 @@ const { default: ComponenteReproductor } = await import('./streaming/mediator/Co
 const { default: EstadoReproduccion } = await import('./streaming/state/EstadoReproduccion.js');
 const { ESTADOS, NOMBRES_ESTADOS } = await import('./streaming/state/estados.js');
 const { default: CatalogoService } = await import('./catalog/CatalogoService.js');
+// El catálogo = 101 nodos de ejemplo + (si backend/media tiene títulos reales) su colección y sus hojas.
+const nodosReales = (() => { const c = CatalogoService.buscar('contenido-abierto'); return c ? 1 + c.getHijos().length : 0; })();
+const NODOS_CATALOGO = 101 + nodosReales;
+
 const { default: CatalogoServicio } = await import('./services/CatalogoServicio.js');
 const { default: VisitanteContenido } = await import('./catalog/visitor/VisitanteContenido.js');
 const { default: VisitanteEstadisticas } = await import('./catalog/visitor/VisitanteEstadisticas.js');
@@ -658,7 +662,7 @@ if (corre('visitor')) {
   caso('los TRES visitantes recorren exactamente los mismos nodos', () => {
     const cuentas = Object.keys(VISITANTES).map((n) => silencio(() => recorrer(raiz, crearVisitante(n)).nodosVisitados));
     assert.equal(new Set(cuentas).size, 1);
-    assert.equal(cuentas[0], 101);
+    assert.equal(cuentas[0], NODOS_CATALOGO);
   });
 
   caso('crearVisitante(): nombre inválido → error que lista los válidos', () => {
@@ -809,8 +813,8 @@ if (corre('visitor')) {
     assert.equal(est.data.duracionTotalMin, detalle.resumen.duracionMin);
     assert.equal(est.data.reproducibles, detalle.resumen.totalReproducibles);
     const iter = (await http('GET', '/api/catalogo/catalogo/recorrer?orden=profundidad&limite=100&desde=0', { token: tUma })).data;
-    assert.equal(est.data.nodosVisitados, 101);
-    assert.ok(iter.cantidad === 100 && iter.siguiente === 100); // el iterador confirma que hay más de 100 nodos (101)
+    assert.equal(est.data.nodosVisitados, NODOS_CATALOGO);
+    assert.ok(iter.cantidad === 100 && iter.siguiente === 100); // el iterador confirma que hay más de 100 nodos
 
     const alm = await http('GET', '/api/catalogo/catalogo/reporte?visitante=almacenamiento&calidades=360p,1080p', { token: tUma });
     assert.deepEqual(Object.keys(alm.data.calidades), ['360p', '1080p']);

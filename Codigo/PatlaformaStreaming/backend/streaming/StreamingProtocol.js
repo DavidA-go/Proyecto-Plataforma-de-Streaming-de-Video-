@@ -20,8 +20,21 @@ class StreamingProtocol {
     throw new Error('infoManifiesto() debe ser implementado por la subclase.');
   }
 
-  /** Construye la URL de reproducción para una calidad concreta. */
-  construirUrl(contenidoId, resolucion) {
+  /**
+   * ¿El reproductor puede cambiar de calidad SOLO según la red? HLS y DASH sí (trabajan con
+   * segmentos); una descarga progresiva (MP4) no: ahí la calidad la elige la persona.
+   */
+  esAdaptativo() {
+    return true;
+  }
+
+  /**
+   * Construye la URL de reproducción para una calidad concreta.
+   * `fuente` (FuenteMedia) es opcional: HLS y DASH la ignoran (URLs de ejemplo);
+   * MP4 la usa para saber qué archivo real corresponde a la resolución.
+   */
+  // eslint-disable-next-line no-unused-vars
+  construirUrl(contenidoId, resolucion, fuente) {
     throw new Error('construirUrl() debe ser implementado por la subclase.');
   }
 }

@@ -4,12 +4,14 @@ import StreamingServicio from '../services/StreamingServicio.js';
 import DRMServicio from '../services/DRMServicio.js';
 import SuscripcionServicio from '../services/SuscripcionServicio.js';
 import UsuarioServicio from '../services/UsuarioServicio.js';
+import MediaServicio from '../services/MediaServicio.js';
 import CatalogoProxy from './CatalogoProxy.js';
 import RecomendacionProxy from './RecomendacionProxy.js';
 import StreamingProxy from './StreamingProxy.js';
 import DRMProxy from './DRMProxy.js';
 import SuscripcionProxy from './SuscripcionProxy.js';
 import UsuarioProxy from './UsuarioProxy.js';
+import MediaProxy from './MediaProxy.js';
 import AccesoLog from './AccesoLog.js';
 import RolFlyweightFactory from '../flyweight/RolFlyweightFactory.js';
 import CalidadVideoFactory from '../flyweight/CalidadVideoFactory.js';
@@ -38,6 +40,7 @@ const reales = {
   drm: new DRMServicio(),
   suscripcion: new SuscripcionServicio({ sujeto: crearSujetoPlan() }), // Observer: el sujeto ya trae sus observadores
   usuarios: new UsuarioServicio(),
+  media: new MediaServicio(),
 };
 
 /** Proxy mínimo para los datos propios del sistema (accesos y estadísticas del Flyweight). */
@@ -70,6 +73,7 @@ class ServiciosProxy {
       drm: new DRMProxy(reales.drm, actor),
       suscripcion: new SuscripcionProxy(reales.suscripcion, actor),
       usuarios: new UsuarioProxy(reales.usuarios, actor),
+      media: new MediaProxy(reales.media, actor),
       sistema: new SistemaProxy(actor),
     };
   }

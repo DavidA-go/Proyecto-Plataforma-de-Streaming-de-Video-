@@ -1,0 +1,73 @@
+{
+  "id": "caminandes",
+  "tipo": "serie",
+  "titulo": "Caminandes",
+  "generos": [
+    "animacion",
+    "comedia",
+    "familiar"
+  ],
+  "temporadas": [
+    {
+      "episodios": [
+        {
+          "titulo": "Llama Drama",
+          "duracionMin": 1.5,
+          "archivos": [
+            {
+              "resolucion": "360p",
+              "archivo": "t1e1-360p.mp4"
+            },
+            {
+              "resolucion": "1080p",
+              "archivo": "t1e1-1080p.mp4"
+            }
+          ]
+        },
+        {
+          "titulo": "Gran Dillama",
+          "duracionMin": 2.43,
+          "archivos": [
+            {
+              "resolucion": "360p",
+              "archivo": "t1e2-360p.mp4"
+            },
+            {
+              "resolucion": "1080p",
+              "archivo": "t1e2-1080p.mp4"
+            }
+          ]
+        },
+        {
+          "titulo": "Llamigos",
+          "duracionMin": 2.5,
+          "archivos": [
+            {
+              "resolucion": "1080p",
+              "archivo": "t1e3-1080p.mp4"
+            }
+          ]
+        },
+        {
+          "titulo": "Llamigos",
+          "duracionMin": 2.5,
+          "archivos": [
+            {
+              "resolucion": "360p",
+              "archivo": "t1e4-360p.mp4"
+            },
+            {
+              "resolucion": "1080p",
+              "archivo": "t1e4-1080p.mp4"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "creditos": {
+    "autor": "Blender Foundation",
+    "licencia": "CC-BY 3.0",
+    "url": "https://www.caminandes.com"
+  }
+}

@@ -1114,3 +1114,113 @@ a {
   font-size: 0.75rem;
   white-space: pre;
 }
+
+/* Strategy / Template Method: pasos del esqueleto */
+.pc-steps { margin: 6px 0 8px 18px; display: flex; flex-direction: column; gap: 2px; font-size: 0.8rem; color: var(--text-muted); }
+.pc-steps b { color: var(--text); }
+
+/* ---------- Reproductor de video real ---------- */
+.catalog-tag-real { color: #7fd4a0; border-color: rgba(127, 212, 160, 0.5); }
+
+.player-box { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.player-video {
+  width: 100%;
+  max-height: 70vh;
+  background: #000;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+}
+.player-bar { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); }
+.player-quality select {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+.player-hint { color: var(--text-faint); }
+.player-credits a { color: var(--gold); }
+.player-demo-note { margin: 0; font-size: 0.88rem; color: var(--text-muted); max-width: 640px; }
+
+.tag-real, .tag-simulado {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+  vertical-align: middle;
+}
+.tag-real { color: #7fd4a0; border-color: rgba(127, 212, 160, 0.45); }
+.tag-simulado { color: #e0b15a; border-color: rgba(224, 177, 90, 0.45); }
+.player-download { color: var(--gold); text-decoration: none; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; }
+.player-download:hover { border-color: var(--gold); }
+
+/* ---------- Menú funcional, tarjetas del catálogo y Mi lista ---------- */
+.dash-links li:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; border-radius: 4px; }
+
+.dash-row-title { display: flex; align-items: baseline; gap: 14px; }
+.dash-row-count { color: var(--text-faint); font-family: var(--font-body); font-size: 0.85rem; font-weight: 400; }
+.dash-row-more {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--gold);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.dash-row-more:hover { color: var(--gold-hover); text-decoration: underline; }
+
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fill, 200px); gap: 18px; justify-content: start; }
+
+.dash-card:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.dash-card-meta { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+.dash-card-list {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(10, 10, 15, 0.6);
+  color: #fff;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+.dash-card:hover .dash-card-list, .dash-card:focus-within .dash-card-list, .dash-card-list.on { opacity: 1; }
+.dash-card-list.on { background: var(--gold); border-color: var(--gold); color: #1a1405; font-weight: 700; }
+.dash-card-list:hover { background: rgba(10, 10, 15, 0.9); }
+.dash-card-list.on:hover { background: var(--gold-hover); }
+@media (hover: none) { .dash-card-list, .dash-card-play { opacity: 1; } }
+
+.dash-card-badge {
+  position: absolute;
+  top: 14px;
+  left: 50px;
+  z-index: 2;
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(127, 212, 160, 0.18);
+  border: 1px solid rgba(127, 212, 160, 0.5);
+  color: #7fd4a0;
+}
+
+.dash-filter { margin-bottom: 26px; color: var(--text-muted); font-size: 0.9rem; }
+.dash-filter select {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-left: 6px;
+  text-transform: capitalize;
+}
+.dash-scroll-target { scroll-margin-top: 90px; }
+.dash-plan-note { color: var(--text-muted); font-size: 0.82rem; max-width: 560px; }

@@ -13,6 +13,7 @@ import { usuarioPublico } from './services/SuscripcionServicio.js';
 import CadenaRegistro from './chain/CadenaRegistro.js'; // Patrón Chain of Responsibility (validación del registro)
 import invoker from './commands/CommandInvoker.js'; // Patrón Command (invocador con historial por usuario)
 import { CambiarPlanCommand } from './commands/UserCommands.js'; // Patrón Command (cambio de plan reversible)
+import { paisDeLaPeticion } from './geo/paisDeLaPeticion.js';
 
 const app = express();
 const PORT = 5000;
@@ -142,7 +143,8 @@ app.post('/api/login', async (req, res) => {
 
   try {
     // 1. Buscar usuario por la columna 'correo'
-    const result = await db.query('SELECT * FROM usuarios WHERE correo = $1', [email]);
+    // El correo se compara sin distinguir mayúsculas ni espacios sobrantes (el panel de admin lo guarda en minúsculas).
+    const result = await db.query('SELECT * FROM usuarios WHERE LOWER(TRIM(correo)) = LOWER(TRIM($1))', [String(email ?? '')]);
     if (result.rows.length === 0) {
       return res.status(400).json({ message: 'Credenciales inválidas.' });
     }
@@ -207,14 +209,22 @@ app.get('/api/usuarios/:id/plan/eventos', ruta((req, res, s) => {
 // Cuerpo: { contenidoId, proveedorExterno?, dispositivoId?, pais? }
 // ------------------------------------------------------------------
 app.post('/api/stream/autorizar', ruta(async (req, res, s) => {
-  const { contenidoId, proveedorExterno, dispositivoId, pais } = req.body;
+  const { contenidoId, proveedorExterno, dispositivoId } = req.body;
+  // El país lo decide el SERVIDOR (cabecera del CDN o configuración); lo que mande el cliente se ignora.
+  const { pais, origen } = paisDeLaPeticion(req);
   const { validacion, licencia, marcaDeAgua, contenido } = await s.drm.autorizar({
     contenidoId,
     proveedorExterno,
     dispositivoId,
     pais,
   });
-  res.status(200).json({ message: 'Reproducción autorizada', validacion, licencia, marcaDeAgua, contenido });
+  res.status(200).json({ message: 'Reproducción autorizada', validacion, licencia: { ...licencia, regionOrigen: origen }, marcaDeAgua, contenido });
+}));
+
+// Latido de la reproducción: el reproductor lo manda cada ~60 s para mantener viva su sesión (pantalla en uso).
+// Responde { vigente: false } si la sesión ya se liberó (Detener, cambio de plan) o venció.
+app.post('/api/stream/latido', ruta((req, res, s) => {
+  res.status(200).json(s.drm.latido({ sesionId: req.body.sesionId }));
 }));
 
 // Libera la pantalla en uso. Sin usuarioId = la propia; con el de otro = solo admin.
@@ -239,8 +249,28 @@ app.post('/api/stream/manifest', ruta((req, res, s) => {
 }));
 
 // Streaming: tipo de entrega x protocolo (Bridge + Composite + Builder + Flyweight).
-app.post('/api/stream/entrega', ruta((req, res, s) => {
-  res.status(200).json(s.streaming.generarEntrega(req.body));
+// protocolo: 'hls' | 'dash' | 'mp4' | 'auto' (cada título usa el que su fuente de video soporta).
+// El plan del usuario recorta las calidades de los títulos con video real.
+app.post('/api/stream/entrega', ruta(async (req, res, s) => {
+  const plan = await s.suscripcion.obtenerPlan(req.usuario?.id); // sin sesión -> 401 (lo decide el proxy)
+  res.status(200).json(s.streaming.generarEntrega({ ...req.body, calidadMaxima: plan.calidadMaxima }));
+}));
+
+// Archivos de video REALES (backend/media). Proxy de protección: exige el ticket firmado que viene
+// en el manifiesto (?ticket=...). res.sendFile atiende las peticiones "Range" (adelantar/retroceder).
+app.get('/media/:contenidoId/:archivo', ruta((req, res, s) => {
+  const descarga = req.query.descargar === '1';
+  const { rutaAbsoluta, mime, nombreDescarga } = s.media.abrir({
+    contenidoId: req.params.contenidoId,
+    archivo: req.params.archivo,
+    ticket: req.query.ticket,
+    rango: req.headers.range,
+    descarga,
+  });
+  const headers = { 'Content-Type': mime, 'Cache-Control': 'private, max-age=0', ...(descarga ? { 'Content-Disposition': `attachment; filename="${nombreDescarga}"` } : {}) };
+  res.sendFile(rutaAbsoluta, { dotfiles: 'deny', headers }, (err) => {
+    if (err && !res.headersSent) res.status(err.status || 500).json({ message: 'No se pudo leer el video.' });
+  });
 }));
 
 // Streaming adaptativo (Mediator): sesión de reproducción con sus piezas coordinadas.
@@ -298,6 +328,31 @@ app.post('/api/recomendaciones/mi-perfil/restaurar', ruta((req, res, s) => {
   res.status(200).json({ message: 'Versión restaurada', ...s.recomendacion.restaurarMiPerfil({ version: req.body.version }) });
 }));
 
+// Recomendaciones del catálogo (Template Method + Strategy). Siempre para el usuario autenticado; requiere perfil.
+//   ?tipo=para-ti|similares|descubrir  &estrategia=hibrida|generos|historial  &contenidoId=ambar (solo similares)  &limite=5
+app.get('/api/recomendaciones', ruta((req, res, s) => {
+  const { tipo, estrategia, contenidoId, limite } = req.query;
+  res.status(200).json(s.recomendacion.recomendar({ tipo, estrategia, contenidoId, limite }));
+}));
+
+// Qué tipos (plantillas) y estrategias existen.
+app.get('/api/recomendaciones/opciones', ruta((req, res, s) => {
+  res.status(200).json(s.recomendacion.opciones());
+}));
+
+// Historial de lo visto (alimenta la estrategia por historial). Cuerpo del POST: { contenidoId }
+app.get('/api/recomendaciones/historial', ruta((req, res, s) => {
+  res.status(200).json(s.recomendacion.miHistorial());
+}));
+
+app.post('/api/recomendaciones/historial', ruta((req, res, s) => {
+  res.status(201).json({ message: 'Título marcado como visto', ...s.recomendacion.registrarVisto({ contenidoId: req.body.contenidoId }) });
+}));
+
+app.delete('/api/recomendaciones/historial', ruta((req, res, s) => {
+  res.status(200).json({ message: 'Historial borrado', ...s.recomendacion.limpiarMiHistorial() });
+}));
+
 // Catálogo (Composite). Filtros: ?generos=accion,thriller  |  ?perfil=familiar
 app.get('/api/catalogo', ruta((req, res, s) => {
   res.status(200).json(s.catalogo.listar({ perfil: req.query.perfil, generos: req.query.generos }));
@@ -337,6 +392,27 @@ app.put('/api/admin/usuarios/:id/rol', ruta(async (req, res, s) => {
   const user = await s.usuarios.cambiarRol(req.params.id, req.body.rol);
   console.log(`👑 Usuario #${user.id} (${user.correo}) ahora tiene el rol "${user.rol}"`);
   res.status(200).json({ message: 'Rol actualizado', user });
+}));
+
+// Crear / editar / eliminar cuentas (el proxy exige los permisos usuarios:crear|editar|eliminar).
+app.post('/api/admin/usuarios', ruta(async (req, res, s) => {
+  const { nombre, correo, password, tipoPlan, rol } = req.body;
+  const user = await s.usuarios.crear({ nombre, correo, password, tipoPlan, rol });
+  console.log(`➕ Usuario #${user.id} (${user.correo}) creado por un administrador`);
+  res.status(201).json({ message: 'Usuario creado', user });
+}));
+
+app.put('/api/admin/usuarios/:id', ruta(async (req, res, s) => {
+  const { nombre, correo, password } = req.body;
+  const user = await s.usuarios.editar(req.params.id, { nombre, correo, password });
+  console.log(`✏️  Usuario #${user.id} (${user.correo}) editado por un administrador${password ? ' — contraseña CAMBIADA' : ' — sin cambio de contraseña'}`);
+  res.status(200).json({ message: 'Usuario actualizado', user });
+}));
+
+app.delete('/api/admin/usuarios/:id', ruta(async (req, res, s) => {
+  const user = await s.usuarios.eliminar(req.params.id);
+  console.log(`🗑️  Usuario #${user.id} (${user.correo}) eliminado por un administrador`);
+  res.status(200).json({ message: 'Usuario eliminado', user });
 }));
 
 app.get('/api/admin/accesos', ruta((req, res, s) => {

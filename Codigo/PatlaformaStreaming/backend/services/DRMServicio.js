@@ -20,6 +20,10 @@ class DRMServicio {
     return DRMFacade.detener(usuarioId, sesionId);
   }
 
+  latido({ usuarioId, sesionId }) {
+    return DRMFacade.latido(usuarioId, sesionId);
+  }
+
   auditoria(cantidad = 50) {
     return DRMFacade.auditoria(cantidad);
   }

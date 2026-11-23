@@ -1,4 +1,4 @@
-import { construirCatalogoDemo } from './catalogoDemo.js';
+import { construirCatalogo } from './catalogoDemo.js';
 
 /**
  * CatalogoService.js
@@ -10,7 +10,7 @@ import { construirCatalogoDemo } from './catalogoDemo.js';
  * ------------------------------------------------------------------
  */
 class CatalogoService {
-  static raiz = construirCatalogoDemo();
+  static raiz = construirCatalogo();
 
   static obtenerArbol() {
     return CatalogoService.raiz.toJSON();

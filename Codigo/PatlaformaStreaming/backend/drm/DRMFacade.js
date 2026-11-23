@@ -142,6 +142,17 @@ class DRMFacade {
     return { liberada, pantallasEnUso: SesionesRegistry.activas(usuarioId).length };
   }
 
+  /** ¿Sigue vigente la sesión (pantalla) que nació de una licencia? Devuelve la sesión o null. */
+  static sesionVigente(usuarioId, sesionId) {
+    return SesionesRegistry.buscar(usuarioId, sesionId);
+  }
+
+  /** Latido de reproducción: mantiene viva la sesión mientras el usuario está viendo. */
+  static latido(usuarioId, sesionId) {
+    const sesion = SesionesRegistry.renovar(usuarioId, sesionId);
+    return { vigente: sesion !== null, pantallasEnUso: SesionesRegistry.activas(usuarioId).length };
+  }
+
   /** Últimas licencias EMITIDAS y DENEGADAS (la más reciente primero). */
   static auditoria(cantidad = 50) {
     return AuditoriaLog.ultimos(cantidad);

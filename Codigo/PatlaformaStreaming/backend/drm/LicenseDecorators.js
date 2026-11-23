@@ -79,11 +79,23 @@ export class LimiteDispositivosDecorator extends LicenseManagerDecorator {
     }
 
     const licencia = await super.emitirLicencia(usuario, contenidoId);
-    const sesion = SesionesRegistry.registrar(usuario.id, this.dispositivoId, contenidoId);
+    // Descarga offline = lo que permita la licencia Y lo que incluya el PLAN (el proveedor externo
+    // simulado responde "sí" siempre; sin este recorte un usuario Free podría descargar).
+    const permiteOffline = licencia.permiteOffline === true && this.plan.permiteDescargasOffline();
+
+    // La licencia manda sobre la sesión: duración (vence sola) y permiso de descarga offline.
+    const expiraEn = licencia.duracionMinutos > 0 ? Date.now() + licencia.duracionMinutos * 60 * 1000 : null;
+    const sesion = SesionesRegistry.registrar(usuario.id, this.dispositivoId, contenidoId, {
+      licenciaId: licencia.licenciaId,
+      expiraEn,
+      permiteOffline,
+    });
 
     return {
       ...licencia,
+      permiteOffline,
       sesionId: sesion.id,
+      venceEn: expiraEn ? new Date(expiraEn).toISOString() : null,
       pantallasEnUso: SesionesRegistry.activas(usuario.id).length,
       pantallasMaximas: maximo,
     };
